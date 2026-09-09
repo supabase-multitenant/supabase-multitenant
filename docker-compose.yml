@@ -44,17 +44,6 @@ services:
     networks:
       - supabase-multitenant-network
       - coolify
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.smt-panel-http.entryPoints=http
-      - traefik.http.routers.smt-panel-http.middlewares=redirect-to-https
-      - traefik.http.routers.smt-panel-http.rule=Host(`${COOLIFY_FQDN}`)
-      - traefik.http.routers.smt-panel-http.service=smt-panel
-      - traefik.http.routers.smt-panel-https.entryPoints=https
-      - traefik.http.routers.smt-panel-https.rule=Host(`${COOLIFY_FQDN}`)
-      - traefik.http.routers.smt-panel-https.tls.certresolver=letsencrypt
-      - traefik.http.routers.smt-panel-https.service=smt-panel
-      - traefik.http.services.smt-panel.loadbalancer.server.port=3000
 
 networks:
   supabase-multitenant-network:
