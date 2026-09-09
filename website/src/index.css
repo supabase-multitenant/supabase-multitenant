@@ -1,0 +1,247 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Supabase-inspired design tokens.
+   Dark surfaces, a single vivid green (#3ECF8E), generous whitespace, subtle
+   1px borders and a geometric display font. All classes below are generated
+   from these @theme tokens by Tailwind v4.
+--------------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Brand green scale */
+  --color-brand-50: #ebfbf4;
+  --color-brand-100: #cff6e4;
+  --color-brand-200: #a2edcd;
+  --color-brand-300: #6fddb1;
+  --color-brand-400: #3ecf8e; /* primary */
+  --color-brand-500: #25b981;
+  --color-brand-600: #1c9b6b;
+  --color-brand-700: #167a56;
+  --color-brand-800: #123f2f;
+  --color-brand-900: #0c291f;
+
+  /* Dark surface scale */
+  --color-surface-950: #050505;
+  --color-surface-900: #0a0a0a;
+  --color-surface-850: #0f0f0f;
+  --color-surface-800: #141414;
+  --color-surface-750: #1a1a1a;
+  --color-surface-700: #222222;
+  --color-surface-600: #2a2a2a;
+  --color-surface-500: #333333;
+
+  /* Text & borders */
+  --color-ink: #f2f2f2;        /* primary text */
+  --color-muted: #a3a3a3;      /* secondary text */
+  --color-dim: #6f7276;        /* tertiary / hints */
+  --color-line: rgba(255, 255, 255, 0.10);
+  --color-line-strong: rgba(255, 255, 255, 0.16);
+
+  --radius-xl2: 1.25rem;
+}
+
+/* Smooth dark base */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-surface-900);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    background: rgba(62, 207, 142, 0.28);
+    color: #ffffff;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2c2c2c;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3a3a;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Code */
+  code, kbd, pre {
+    font-family: var(--font-mono);
+  }
+
+  code:not(pre code) {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+    padding: 0.1em 0.35em;
+    font-size: 0.86em;
+    color: var(--color-brand-200);
+  }
+}
+
+@layer components {
+  /* Anchored, bordered section container */
+  .shell {
+    width: 100%;
+    max-width: 76rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+  @media (min-width: 768px) {
+    .shell {
+      padding-inline: 2rem;
+    }
+  }
+
+  .card {
+    border-radius: var(--radius-xl2);
+    border: 1px solid var(--color-line);
+    background: linear-gradient(180deg, #111111 0%, #0c0c0c 100%);
+  }
+
+  .card-hover {
+    transition: border-color 0.25s ease, transform 0.25s ease, background 0.25s ease;
+  }
+  .card-hover:hover {
+    border-color: rgba(62, 207, 142, 0.45);
+    transform: translateY(-2px);
+    background: linear-gradient(180deg, #151515 0%, #101010 100%);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--color-line);
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 999px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.78rem;
+    color: var(--color-muted);
+  }
+
+  /* Prose for rendered markdown (docs) */
+  .prose-doc {
+    color: #cfcfcf;
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+  .prose-doc h1 {
+    font-family: var(--font-display);
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 2.25rem;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 1.25rem;
+  }
+  .prose-doc h2 {
+    font-family: var(--font-display);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: -0.01em;
+    margin: 2.5rem 0 0.9rem;
+    padding-top: 0.75rem;
+    scroll-margin-top: 6rem;
+  }
+  .prose-doc h3 {
+    font-family: var(--font-display);
+    color: #f5f5f5;
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin: 1.75rem 0 0.6rem;
+    scroll-margin-top: 6rem;
+  }
+  .prose-doc p {
+    margin: 0 0 1.1rem;
+  }
+  .prose-doc a {
+    color: var(--color-brand-300);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: rgba(62, 207, 142, 0.4);
+  }
+  .prose-doc a:hover {
+    color: var(--color-brand-400);
+  }
+  .prose-doc ul, .prose-doc ol {
+    margin: 0 0 1.25rem;
+    padding-left: 1.4rem;
+  }
+  .prose-doc ul { list-style: disc; }
+  .prose-doc ol { list-style: decimal; }
+  .prose-doc li { margin: 0.35rem 0; }
+  .prose-doc li::marker { color: var(--color-brand-400); }
+  .prose-doc strong { color: #ffffff; font-weight: 600; }
+  .prose-doc blockquote {
+    border-left: 3px solid var(--color-brand-400);
+    background: rgba(62, 207, 142, 0.06);
+    padding: 0.75rem 1rem;
+    border-radius: 0 0.5rem 0.5rem 0;
+    margin: 1.25rem 0;
+    color: #d7d7d7;
+  }
+  .prose-doc blockquote p { margin: 0; }
+  .prose-doc hr {
+    border-color: var(--color-line);
+    margin: 2.25rem 0;
+  }
+  .prose-doc table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+    font-size: 0.92rem;
+  }
+  .prose-doc th, .prose-doc td {
+    border: 1px solid var(--color-line);
+    padding: 0.55rem 0.8rem;
+    text-align: left;
+  }
+  .prose-doc th {
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+    font-weight: 600;
+  }
+  .prose-doc td { color: #cfcfcf; }
+  .prose-doc pre {
+    background: #080808;
+    border: 1px solid var(--color-line);
+    border-radius: 0.9rem;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 1.25rem 0;
+  }
+  .prose-doc pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: #e6e6e6;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+}
+
+/* Code token colors (kept simple; Supabase uses a warm dark-green scheme) */
+.tk-key { color: #7ee0b0; }
+.tk-str { color: #d6e68b; }
+.tk-com { color: #6f767d; font-style: italic; }
+.tk-num { color: #8ad1f2; }

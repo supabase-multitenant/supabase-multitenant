@@ -1,0 +1,96 @@
+name: Auto Version Bump
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+  # Allow manual trigger for batch version bump
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  bump-version:
+    # Run if:
+    # 1. Manual trigger (workflow_dispatch)
+    # 2. PR merged AND doesn't have 'skip-version' label
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true && !contains(github.event.pull_request.labels.*.name, 'skip-version'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine Bump Type
+        id: bump-type
+        run: |
+          # Check if this is a manual trigger
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "type=${{ github.event.inputs.bump_type }}" >> $GITHUB_OUTPUT
+            echo "Manual trigger: ${{ github.event.inputs.bump_type }}"
+          else
+            # PR trigger - check labels
+            labels="${{ join(github.event.pull_request.labels.*.name, ',') }}"
+            if [[ "$labels" == *"version:major"* ]]; then
+              echo "type=major" >> $GITHUB_OUTPUT
+            elif [[ "$labels" == *"version:minor"* ]]; then
+              echo "type=minor" >> $GITHUB_OUTPUT
+            elif [[ "$labels" == *"version:patch"* ]]; then
+              echo "type=patch" >> $GITHUB_OUTPUT
+            else
+              echo "type=none" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Bump Version
+        if: steps.bump-type.outputs.type != 'none'
+        run: |
+          # 🛡️ SAFETY MEASURE: Ensure we are on the absolute latest main
+          # This prevents issues if another PR was merged just seconds before this one
+          git checkout main
+          git pull origin main
+
+          # Ensure script is executable
+          chmod +x ./scripts/version-bump.sh
+          
+          # Run the bump script
+          ./scripts/version-bump.sh ${{ steps.bump-type.outputs.type }}
+          
+          # Get the new version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          
+          # Create tag
+          git tag "v$NEW_VERSION"
+
+      - name: Push Changes
+        if: steps.bump-type.outputs.type != 'none'
+        run: |
+          git push origin main
+          git push origin "v${{ env.NEW_VERSION }}"

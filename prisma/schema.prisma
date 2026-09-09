@@ -1,0 +1,111 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  projects  Project[]
+  teamMembers TeamMember[]
+  sessions  Session[]
+  
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model Project {
+  id             String   @id @default(uuid())
+  name           String
+  slug           String   @unique
+  description    String?
+  status         String   @default("active") // active, paused, stopped
+  domain         String?  // Custom domain for API (Kong)
+  domainVerified Boolean  @default(false) // Whether the API domain is verified
+  studioDomain   String?  // Custom domain for Supabase Studio
+  studioDomainVerified Boolean @default(false) // Whether the Studio domain is verified
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  // Owner
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  envVars     ProjectEnvVar[]
+  
+  @@map("projects")
+}
+
+model ProjectEnvVar {
+  id        String   @id @default(uuid())
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@unique([projectId, key])
+  @@map("project_env_vars")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  userId    String
+  role      String   @default("member") // owner, admin, member
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("team_members")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  @@map("password_reset_tokens")
+}
+
+model PanelSettings {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("panel_settings")
+}

@@ -1,0 +1,29 @@
+name: Check Version Labels
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize]
+
+jobs:
+  check-labels:
+    name: Check Version Label
+    runs-on: ubuntu-latest
+    # Only run checks if the PR targets the MAIN branch
+    if: github.base_ref == 'main'
+    steps:
+      - name: Check for Version Label
+        uses: actions/github-script@v8
+        with:
+          script: |
+              const labels = context.payload.pull_request.labels.map(l => l.name);
+              const validLabels = ['version:patch', 'version:minor', 'version:major', 'skip-version'];
+              const hasVersionLabel = labels.some(l => validLabels.includes(l));
+              
+              if (!hasVersionLabel) {
+                core.setFailed('❌ PR must have one of these labels: version:patch, version:minor, version:major, skip-version');
+              } else {
+                if (labels.includes('skip-version')) {
+                  console.log('⏭️ skip-version label found - version bump will be skipped');
+                }
+                console.log('✅ Version label check passed!');
+              }
