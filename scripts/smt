@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Supabase Multitenant — easy-start launcher.
+#
+# Pulls the published image, starts a control-plane Postgres, brings up the
+# panel, runs migrations (the image does this on boot), and prints the URL.
+#
+#   ./scripts/smt up      # start it (default)
+#   ./scripts/smt down    # stop and remove containers
+#   ./scripts/smt logs    # follow the panel logs
+#   ./scripts/smt ps      # show the running containers
+set -euo pipefail
+
+IMAGE="${SMT_IMAGE:-webboxes/supabase-multitenant:latest}"
+NETWORK="supabase-multitenant"
+DB="smt-postgres"
+PANEL="smt-panel"
+PORT="${SMT_PORT:-3000}"
+DB_PASSWORD="${SMT_DB_PASSWORD:-smt-local-dev}"
+DATA_PATH="${SMT_DATA_PATH:-/etc/supabase-multitenant}"
+NEXTAUTH_SECRET="${NEXTAUTH_SECRET:-smt-change-me-please}"
+
+log()  { printf '\033[1;32m%s\033[0m\n' "$*"; }
+
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required. Install it: https://docs.docker.com/get-docker/" >&2
+    exit 1
+  fi
+  docker info >/dev/null 2>&1 || { echo "Docker is not running (start Docker Desktop/daemon)." >&2; exit 1; }
+}
+
+down() {
+  docker rm -f "$PANEL" >/dev/null 2>&1 || true
+  docker rm -f "$DB" >/dev/null 2>&1 || true
+  docker network rm "$NETWORK" >/dev/null 2>&1 || true
+  log "Stopped $PANEL and $DB."
+}
+
+up() {
+  require_docker
+  down >/dev/null 2>&1 || true
+  docker network create "$NETWORK" >/dev/null 2>&1 || true
+
+  log "Starting Postgres ($DB)..."
+  docker run -d --name "$DB" --network "$NETWORK" \
+    -e POSTGRES_USER=supabase_multitenant \
+    -e POSTGRES_PASSWORD="$DB_PASSWORD" \
+    -e POSTGRES_DB=supabase_multitenant \
+    -v "${DATA_PATH}/db:/var/lib/postgresql/data" \
+    postgres:16-alpine >/dev/null
+
+  log "Waiting for Postgres..."
+  ok=0
+  for i in $(seq 1 60); do
+    if docker exec "$DB" pg_isready -U supabase_multitenant >/dev/null 2>&1; then ok=1; break; fi
+    sleep 1
+  done
+  if [ "$ok" -ne 1 ]; then
+    echo "Postgres did not become ready." >&2
+    docker logs "$DB" >&2 || true
+    down >/dev/null 2>&1 || true
+    exit 1
+  fi
+
+  log "Starting the panel ($PANEL)..."
+  docker run -d --name "$PANEL" --network "$NETWORK" -p "${PORT}:3000" \
+    -e SUPABASE_MULTITENANT_MODE=production \
+    -e DATABASE_URL="postgresql://supabase_multitenant:${DB_PASSWORD}@${DB}:5432/supabase_multitenant" \
+    -e NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
+    -e NEXTAUTH_URL="http://localhost:${PORT}" \
+    -e APP_NAME="Supabase Multitenant" \
+    -e APP_URL="http://localhost:${PORT}" \
+    -e DATA_PATH="/data" \
+    -v "${DATA_PATH}/panel:/data" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    "$IMAGE" >/dev/null
+
+  log "✅ Supabase Multitenant is up at http://localhost:${PORT}"
+  log "   (register the first admin account, then Create Project)"
+  log "   stop with: ./scripts/smt down"
+}
+
+logs() { docker logs -f "$PANEL"; }
+ps()   { docker ps --filter "name=$PANEL" --filter "name=$DB" ; }
+
+case "${1:-up}" in
+  up)    up ;;
+  down)  down ;;
+  logs)  logs ;;
+  ps)    ps ;;
+  *)
+    cat <<EOF
+Usage: $(basename "$0") [command]
+
+Commands:
+  up     Pull the image, start Postgres + the panel, print the URL (default)
+  down   Stop and remove the containers
+  logs   Follow the panel logs
+  ps     Show the running containers
+EOF
+    ;;
+esac

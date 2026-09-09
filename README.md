@@ -30,6 +30,55 @@ The whole idea in one line: **1 infrastructure, many isolated databases.**
 - 🔒 **You own the keys** — data stays on hardware you control. No vendor lock-in.
 - ⚡ **Go live in minutes** — one command, or a couple of clicks in Coolify.
 
+---
+
+## Easy start (one command)
+
+The shortest path to a running panel — no YAML, no manual Postgres setup, no Traefik config:
+
+```bash
+./scripts/smt up
+```
+
+That **pulls the published image** (`webboxes/supabase-multitenant:latest`), starts a control-plane **Postgres**, brings up the **panel**, runs the migrations (the image does this on boot), and prints:
+
+```
+✅ Supabase Multitenant is up at http://localhost:3000
+```
+
+Open `http://localhost:3000`, register the first (admin) account, then **Create Project** to spin up your first isolated Supabase stack.
+
+```bash
+# stop it
+./scripts/smt down
+
+# follow the panel logs
+./scripts/smt logs
+
+# or use make
+make up
+```
+
+> **Why the image always says `webboxes/...`?** A bare `docker run supabase-multitenant` resolves to Docker's official `library/` namespace, which only Docker itself can publish to. Your image lives at `webboxes/supabase-multitenant` on [Docker Hub](https://hub.docker.com/r/webboxes/supabase-multitenant), so it always includes the owner — the script above hides that for you.
+
+### Already have a Postgres? Run just the panel
+
+```bash
+DATABASE_URL="postgresql://user:pass@host:5432/supabase_multitenant" \
+NEXTAUTH_SECRET="my-secret" NEXTAUTH_URL="http://localhost:3000" \
+docker run --rm -p 3000:3000 \
+  -e SUPABASE_MULTITENANT_MODE=production \
+  -e DATABASE_URL="$DATABASE_URL" \
+  -e NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
+  -e NEXTAUTH_URL="$NEXTAUTH_URL" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  webboxes/supabase-multitenant:latest
+```
+
+> The panel mounts the Docker socket so it can create each project's isolated Supabase stack from its UI. For production, use the [one-line install](#quick-start) to also get Traefik + automatic HTTPS.
+
+---
+
 ## Screenshots
 
 <div align="center">
@@ -42,6 +91,7 @@ The whole idea in one line: **1 infrastructure, many isolated databases.**
 ## Table of Contents
 
 - [Screenshots](#screenshots)
+- [Easy start](#easy-start-one-command)
 - [Why Supabase Multitenant?](#why-supabase-multitenant)
 - [Features](#features)
 - [Deploy with Coolify (self-hosted)](#deploy-with-coolify-self-hosted)
@@ -282,8 +332,13 @@ supabase-multitenant/
 ├── prisma/                     # Database schema
 ├── traefik/                    # Traefik configuration
 ├── docs/                       # Documentation
-│   └── TESTING.md              # Testing guide
+│   ├── TESTING.md              # Testing guide
+│   └── SELF-HOSTING.md         # Coolify self-hosting guide
 ├── install.sh                  # Production installation script
+├── Makefile                    # make up / down / logs / ps (wraps scripts/smt)
+├── scripts/
+│   ├── smt                     # Easy-start launcher (docker run-style)
+│   └── docker-entrypoint.sh    # Container entrypoint (runs migrations)
 ├── docker-compose.dev.yml      # Development PostgreSQL
 └── website/                    # Marketing + docs site (Vite/React, GitHub Pages)
 ```
