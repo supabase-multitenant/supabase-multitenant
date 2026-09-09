@@ -44,11 +44,11 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.smt-panel-http.entryPoints=http
-      - traefik.http.routers.smt-panel-http.rule=Host(`${SERVICE_FQDN_PANEL}`)
+      - traefik.http.routers.smt-panel-http.rule=Host(`fmhych0pt0irtksig4kciewg.213.47.80.26.sslip.io`)
       - traefik.http.routers.smt-panel-http.service=smt-panel
       - traefik.http.routers.smt-panel-http.middlewares=redirect-to-https
       - traefik.http.routers.smt-panel-https.entryPoints=https
-      - traefik.http.routers.smt-panel-https.rule=Host(`${SERVICE_FQDN_PANEL}`)
+      - traefik.http.routers.smt-panel-https.rule=Host(`fmhych0pt0irtksig4kciewg.213.47.80.26.sslip.io`)
       - traefik.http.routers.smt-panel-https.tls.certresolver=letsencrypt
       - traefik.http.routers.smt-panel-https.service=smt-panel
       - traefik.http.services.smt-panel.loadbalancer.server.port=3000
