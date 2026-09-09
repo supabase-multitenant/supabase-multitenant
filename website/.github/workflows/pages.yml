@@ -1,0 +1,73 @@
+# Deploy the Vite website to GitHub Pages.
+#
+# Two ways to use this, depending on how your Pages site is published:
+#
+#   A) ORG/USER SITE at the domain root (https://<org>.github.io) — the layout
+#      the project targets. Put this file in the *<org>.github.io* repository
+#      and it will check out the source from the app repo, build `website/`
+#      and publish at the root (`VITE_BASE=/`). Same repo-name is fine.
+#
+#   B) PROJECT SITE (https://<org>.github.io/<repo>) — keep this file in the
+#      app repo, switch Pages → "GitHub Actions", and set VITE_BASE to the
+#      repo name below.
+#
+# In your GitHub Pages settings choose source "GitHub Actions".
+name: Deploy website to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; cancel superseded runs.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # For layout (A) point this at the app repo containing website/.
+      - uses: actions/checkout@v4
+        with:
+          repository: supabase-multitenant/supabase-multitenant
+          ref: main
+          path: src
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/website/package-lock.json
+
+      - name: Install
+        working-directory: src/website
+        run: npm ci
+
+      - name: Build
+        working-directory: src/website
+        run: npm run build
+        env:
+          # / for the domain-root org/user site. Use /<repo>/ for a project site.
+          VITE_BASE: /
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: src/website/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

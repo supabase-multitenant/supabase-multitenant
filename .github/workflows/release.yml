@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Get previous tag
+        id: prev-tag
+        run: |
+          # Get the previous tag (second most recent)
+          PREV_TAG=$(git tag --sort=-creatordate | head -n 2 | tail -n 1)
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "Previous tag: $PREV_TAG"
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          echo "## What's Changed" > changelog.md
+          echo "" >> changelog.md
+          
+          # Get commits between previous tag and current tag
+          if [ -n "${{ steps.prev-tag.outputs.prev_tag }}" ]; then
+            COMMITS=$(git log ${{ steps.prev-tag.outputs.prev_tag }}..HEAD --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "")
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -10)
+          fi
+          
+          if [ -n "$COMMITS" ]; then
+            echo "$COMMITS" >> changelog.md
+          else
+            echo "- Initial release" >> changelog.md
+          fi
+          
+          echo "" >> changelog.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.prev-tag.outputs.prev_tag }}...${{ github.ref_name }}" >> changelog.md
+          
+          cat changelog.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: changelog.md
+          make_latest: true
