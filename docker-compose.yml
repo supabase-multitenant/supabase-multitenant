@@ -41,6 +41,17 @@ services:
     volumes:
       - panel_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.smt-panel-http.entryPoints=http
+      - traefik.http.routers.smt-panel-http.rule=Host(`${SERVICE_FQDN_PANEL}`)
+      - traefik.http.routers.smt-panel-http.service=smt-panel
+      - traefik.http.routers.smt-panel-http.middlewares=redirect-to-https
+      - traefik.http.routers.smt-panel-https.entryPoints=https
+      - traefik.http.routers.smt-panel-https.rule=Host(`${SERVICE_FQDN_PANEL}`)
+      - traefik.http.routers.smt-panel-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.smt-panel-https.service=smt-panel
+      - traefik.http.services.smt-panel.loadbalancer.server.port=3000
 
 volumes:
   postgres_data:
