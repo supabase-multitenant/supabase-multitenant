@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://supabase-multitenant.github.io">
-    <img src="supabase-multitenant-logo.png" alt="Supabase Multitenant Logo" width="160" />
+    <img src="public/supabase-multitenant-logo-transparent.png" alt="Supabase Multitenant Logo" width="160" />
   </a>
   <h1>Supabase Multitenant</h1>
   <p><strong>Self-host Supabase as your own Supabase.com-style cloud — 1 infrastructure, many isolated databases.</strong></p>
