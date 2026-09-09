@@ -33,9 +33,6 @@ The whole idea in one line: **1 infrastructure, many isolated databases.**
 ## Screenshots
 
 <div align="center">
-  <img src="public/demo.png" alt="Supabase Multitenant dashboard" width="900" />
-  <p><em>One dashboard to create, configure and deploy every isolated Supabase project.</em></p>
-  <br />
   <img src="public/demo_page_dashboard-smt.png" alt="Isolated Supabase project detail" width="900" />
   <p><em>Each project is a real, isolated Supabase stack — Auth, API (Kong), Storage, Realtime, Studio — on your own hardware.</em></p>
 </div>

@@ -46,7 +46,7 @@ function scan(forbidden: string, caseInsensitive = false): string[] {
 }
 
 describe('rebrand completeness', () => {
-  it('has no leftover old brand (supapanel) anywhere in source/config/docs', () => {
+  it('has no leftover old brand anywhere in source/config/docs', () => {
     expect(scan(OLD_BRAND, true)).toEqual([])
   })
 
