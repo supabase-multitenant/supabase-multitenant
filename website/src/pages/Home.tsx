@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ArchDiagram } from '../components/ArchDiagram'
+import { INSTALL_URL } from '../lib/site'
 
 const FEATURES = [
   { title: 'One-command install', body: 'A single curl | sh brings up Traefik, the control Postgres and the panel on any fresh Linux server.' },
@@ -71,7 +72,7 @@ export function Home() {
               <span className="ml-3 text-xs text-dim">install.sh</span>
             </div>
             <pre className="p-5 font-mono text-[13px] leading-relaxed">
-              <span className="text-brand-400">$</span> <span className="text-white">curl -sSL https://get.supabase-multitenant.io | sh</span>
+              <span className="text-brand-400">$</span> <span className="text-white">curl -sSL {INSTALL_URL} | sh</span>
               {'\n'}
               <span className="text-dim">→ installing Docker…</span>
               {'\n'}

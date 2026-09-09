@@ -56,7 +56,7 @@ const quickStart = `# Quick start
 Get a running platform in a few minutes. The fastest path is the one-line installer on a fresh Linux server (Ubuntu 22.04+ or Debian 11+), run as **root**.
 
 \`\`\`bash
-# One-line install (also available as https://get.supabase-multitenant.io)
+# One-line install
 curl -sSL https://raw.githubusercontent.com/supabase-multitenant/supabase-multitenant/main/install.sh | sh
 \`\`\`
 
@@ -100,7 +100,7 @@ The script refuses to run on macOS and inside containers, and checks that ports 
 ## Run the installer
 
 \`\`\`bash
-curl -sSL https://get.supabase-multitenant.io | sh
+curl -sSL https://raw.githubusercontent.com/supabase-multitenant/supabase-multitenant/main/install.sh | sh
 \`\`\`
 
 This writes everything under \`/etc/supabase-multitenant\`:
