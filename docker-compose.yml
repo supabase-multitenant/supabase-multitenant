@@ -22,7 +22,9 @@ services:
       retries: 10
 
   panel:
-    image: ghcr.io/supabase-multitenant/supabase-multitenant:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
