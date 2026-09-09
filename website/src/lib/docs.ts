@@ -57,7 +57,7 @@ Get a running platform in a few minutes. The fastest path is the one-line instal
 
 \`\`\`bash
 # One-line install
-curl -sSL https://raw.githubusercontent.com/supabase-multitenant/supabase-multitenant/main/install.sh | sh
+curl -sSL https://supabase-multitenant.github.io/get | sh
 \`\`\`
 
 The installer:
@@ -100,7 +100,7 @@ The script refuses to run on macOS and inside containers, and checks that ports 
 ## Run the installer
 
 \`\`\`bash
-curl -sSL https://raw.githubusercontent.com/supabase-multitenant/supabase-multitenant/main/install.sh | sh
+curl -sSL https://supabase-multitenant.github.io/get | sh
 \`\`\`
 
 This writes everything under \`/etc/supabase-multitenant\`:
