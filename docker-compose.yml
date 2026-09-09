@@ -39,7 +39,7 @@ services:
       DATA_PATH: /data
       SUPABASE_CORE_REPO_URL: ${SUPABASE_CORE_REPO_URL:-https://github.com/supabase/supabase}
     volumes:
-      - panel_data:/data
+      - /data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     labels:
       - traefik.enable=true
@@ -55,4 +55,3 @@ services:
 
 volumes:
   postgres_data:
-  panel_data:
