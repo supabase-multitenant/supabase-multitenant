@@ -281,7 +281,7 @@ services:
 
   # Supabase Multitenant Panel
   panel:
-    image: webboxes/supabase-multitenant:${SUPABASE_MULTITENANT_VERSION:-latest}
+    image: ghcr.io/supabase-multitenant/supabase-multitenant:${SUPABASE_MULTITENANT_VERSION:-latest}
     container_name: supabase-multitenant-panel
     restart: unless-stopped
     ports:
