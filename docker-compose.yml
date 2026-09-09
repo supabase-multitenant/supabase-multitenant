@@ -10,15 +10,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${SERVICE_USER_POSTGRES:-supabase_multitenant}
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
-      POSTGRES_DB: ${POSTGRES_DB:-supabase_multitenant}
+      POSTGRES_USER: ${POSTGRES_USER:-supabase_multitenant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-supabase_multitenant}
+      POSTGRES_DB: supabase_multitenant
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - supabase-multitenant-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${SERVICE_USER_POSTGRES:-supabase_multitenant}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-supabase_multitenant}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -31,8 +29,8 @@ services:
         condition: service_healthy
     environment:
       SUPABASE_MULTITENANT_MODE: production
-      DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-supabase_multitenant}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB:-supabase_multitenant}
-      NEXTAUTH_SECRET: ${SERVICE_PASSWORD_NEXTAUTHSECRET:-supabase-multitenant-change-me}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-supabase_multitenant}:${POSTGRES_PASSWORD:-supabase_multitenant}@postgres:5432/supabase_multitenant
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-supabase-multitenant-change-me-please}
       NEXTAUTH_URL: http://localhost:3000
       APP_NAME: ${APP_NAME:-Supabase Multitenant}
       APP_URL: http://localhost:3000
@@ -41,15 +39,6 @@ services:
     volumes:
       - panel_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - supabase-multitenant-network
-      - coolify
-
-networks:
-  supabase-multitenant-network:
-    name: supabase-multitenant-network
-  coolify:
-    external: true
 
 volumes:
   postgres_data:
