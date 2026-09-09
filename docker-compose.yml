@@ -38,8 +38,6 @@ services:
       APP_URL: http://localhost:3000
       DATA_PATH: /data
       SUPABASE_CORE_REPO_URL: ${SUPABASE_CORE_REPO_URL:-https://github.com/supabase/supabase}
-    ports:
-      - "${PORT:-3000}:3000"
     volumes:
       - panel_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
