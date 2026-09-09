@@ -41,6 +41,12 @@ services:
     volumes:
       - panel_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true
 
 volumes:
   postgres_data:
