@@ -18,6 +18,9 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // website/ is a separate Vite app with its own lint tool (oxlint)
+      "website/**",
+      "website/public/**",
     ],
   },
 ];
