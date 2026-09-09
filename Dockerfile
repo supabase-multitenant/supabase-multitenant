@@ -33,8 +33,10 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Install runtime dependencies
-# Added: prisma for migrations
-RUN apk add --no-cache libc6-compat openssl git curl docker-cli
+# docker-cli + docker-compose (v2) are required so deployProject() can
+# `docker compose up` each isolated project stack. The compose plugin ships
+# as the `docker-compose` CLI binary on Alpine.
+RUN apk add --no-cache libc6-compat openssl git curl docker-cli docker-compose
 
 # Install global prisma for the entrypoint script (pinned to match project version)
 RUN npm install -g prisma@6.19.1
