@@ -98,13 +98,14 @@ Run it with a Postgres of your choice and set:
 | `SUPABASE_MULTITENANT_MODE` | `production` |
 | `DATA_PATH` | Where project stacks are stored |
 
-See the [Configuration reference](../website/) and the [Installation guide](../website/) on
-the site for the full env-var list.
+See the [Configuration reference](https://supabase-multitenant.github.io/docs/configuration) and the
+[Installation guide](https://supabase-multitenant.github.io/docs/installation) on the
+site for the full env-var list.
 
 ---
 
 ## Next steps
 
-- [Quick start](../website/) — the one-line install on a fresh server.
+- [Quick start](https://supabase-multitenant.github.io/docs/quick-start) — the one-line install on a fresh server.
 - [Deploy with Coolify](../README.md#deploy-with-coolify-self-hosted) — the README walkthrough.
 - [Testing guide](TESTING.md) — run the panel locally for development.
