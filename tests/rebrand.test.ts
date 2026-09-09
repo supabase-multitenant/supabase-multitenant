@@ -63,7 +63,7 @@ describe('install script identifier consistency', () => {
     expect(installScript).toContain('container_name: supabase-multitenant-postgres')
     expect(installScript).toContain('container_name: supabase-multitenant-panel')
     expect(installScript).toContain('supabase-multitenant-network')
-    expect(installScript).toContain('image: alanmf30/supabase-multitenant:')
+    expect(installScript).toContain('image: webboxes/supabase-multitenant:')
   })
 
   it('uses the underscore identifier for the Postgres user/database', () => {

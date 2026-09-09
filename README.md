@@ -221,7 +221,7 @@ To completely remove Supabase Multitenant from your server, follow these steps:
 
 3. **Remove Docker image** (optional):
    ```bash
-   docker rmi alanmf30/supabase-multitenant:latest
+   docker rmi webboxes/supabase-multitenant:latest
    ```
 
 ---

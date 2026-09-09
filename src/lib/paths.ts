@@ -31,7 +31,7 @@ export const NETWORK_NAME = 'supabase-multitenant-network'
 export const DB_IDENTIFIER = 'supabase_multitenant'
 
 /** Docker image for the panel (registry/repository). */
-export const DOCKER_IMAGE = 'alanmf30/supabase-multitenant'
+export const DOCKER_IMAGE = 'webboxes/supabase-multitenant'
 
 /** Default production data directory (mounted by docker-compose). */
 export const DEFAULT_DATA_DIR = '/etc/supabase-multitenant'

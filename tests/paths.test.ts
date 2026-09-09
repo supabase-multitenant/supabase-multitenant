@@ -33,7 +33,7 @@ describe('product identity constants', () => {
   })
 
   it('keeps the Docker image registry namespace', () => {
-    expect(DOCKER_IMAGE).toBe('alanmf30/supabase-multitenant')
+    expect(DOCKER_IMAGE).toBe('webboxes/supabase-multitenant')
   })
 
   it('uses an underscore identifier for the Postgres user/database', () => {

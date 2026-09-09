@@ -12,7 +12,7 @@ one-click deploy service in Coolify.
 
 ## What it deploys
 
-One **control-plane** container (`ghcr.io/supabase-multitenant/supabase-multitenant`)
+One **control-plane** container (`webboxes/supabase-multitenant`)
 + a bundled **Postgres 16** (named `db`, to avoid colliding with Coolify's own
 `postgres` alias on the shared proxy network). The panel mounts the **host Docker
 socket** so, from its UI, you can **Create Project** → it spins up a fresh,

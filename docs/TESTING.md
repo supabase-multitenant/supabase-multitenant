@@ -142,7 +142,7 @@ curl -sSL https://get.docker.com | sh
 apt update && apt install -y git
 
 # 4. Clone repository
-git clone https://github.com/alanfrigo/supabase-multitenant.git /opt/supabase-multitenant
+git clone https://github.com/supabase-multitenant/supabase-multitenant.git /opt/supabase-multitenant
 cd /opt/supabase-multitenant
 
 # 5. Build image on server
