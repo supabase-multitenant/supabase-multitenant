@@ -8,17 +8,15 @@
 name: supabase-multitenant
 
 services:
-  postgres:
+  db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${SERVICE_USER_POSTGRES:-supabase_multitenant}
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
-      POSTGRES_DB: ${POSTGRES_DB:-supabase_multitenant}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:-supabase_multitenant}
+      POSTGRES_DB: supabase_multitenant
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - supabase-multitenant-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${SERVICE_USER_POSTGRES:-supabase_multitenant}"]
       interval: 5s
@@ -29,28 +27,31 @@ services:
     image: ghcr.io/supabase-multitenant/supabase-multitenant:${VERSION:-latest}
     restart: unless-stopped
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     environment:
       SUPABASE_MULTITENANT_MODE: production
-      DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-supabase_multitenant}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB:-supabase_multitenant}
+      DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-supabase_multitenant}:${SERVICE_PASSWORD_POSTGRES:-supabase_multitenant}@db:5432/supabase_multitenant
       NEXTAUTH_SECRET: ${SERVICE_PASSWORD_NEXTAUTHSECRET:-supabase-multitenant-change-me}
       NEXTAUTH_URL: http://localhost:3000
       APP_NAME: ${APP_NAME:-Supabase Multitenant}
       APP_URL: http://localhost:3000
       DATA_PATH: /data
       SUPABASE_CORE_REPO_URL: ${SUPABASE_CORE_REPO_URL:-https://github.com/supabase/supabase}
-    ports:
-      - "${PORT:-3000}:3000"
     volumes:
       - panel_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - supabase-multitenant-network
-
-networks:
-  supabase-multitenant-network:
-    name: supabase-multitenant-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.smt-panel-http.entryPoints=http
+      - traefik.http.routers.smt-panel-http.rule=Host(`${SERVICE_FQDN_PANEL}`)
+      - traefik.http.routers.smt-panel-http.service=smt-panel
+      - traefik.http.routers.smt-panel-http.middlewares=redirect-to-https
+      - traefik.http.routers.smt-panel-https.entryPoints=https
+      - traefik.http.routers.smt-panel-https.rule=Host(`${SERVICE_FQDN_PANEL}`)
+      - traefik.http.routers.smt-panel-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.smt-panel-https.service=smt-panel
+      - traefik.http.services.smt-panel.loadbalancer.server.port=3000
 
 volumes:
   postgres_data:
