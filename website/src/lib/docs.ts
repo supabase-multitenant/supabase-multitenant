@@ -16,7 +16,7 @@ export interface DocPage {
 }
 
 export const NAV: DocNavGroup[] = [
-  { id: 'getting-started', label: 'Getting Started', items: ['introduction', 'quick-start', 'installation', 'local-development'] },
+  { id: 'getting-started', label: 'Getting Started', items: ['introduction', 'quick-start', 'installation', 'coolify-deploy', 'local-development'] },
   { id: 'architecture', label: 'Architecture', items: ['architecture', 'networking'] },
   { id: 'management', label: 'Project Management', items: ['projects', 'environment-variables', 'custom-domains', 'deployments'] },
   { id: 'platform', label: 'Platform', items: ['authentication', 'configuration', 'api', 'troubleshooting', 'faq'] },
@@ -635,10 +635,48 @@ Pull the new image and restart the stack (\`docker compose pull && docker compos
 The repo lives at \`github.com/supabase-multitenant/supabase-multitenant\`. Contributions are welcome.
 `
 
+const coolifyDeploy = `# Deploy with Coolify
+
+Prefer a UI over a terminal? **Coolify** is a self-hosted PaaS that makes public apps a couple of clicks. Supabase Multitenant is available as a [Coolify](https://coolify.io) one-click service.
+
+## What Coolify deploys
+
+| Piece | Image / source | Role |
+|-------|----------------|------|
+| **Panel** | \`webboxes/supabase-multitenant\` | The web control plane + admin auth |
+| **Database** | \`postgres:16-alpine\` | Control-plane metadata |
+| **Proxy** | Coolify's Traefik | Routes traffic and handles TLS |
+
+Each project you create gets its **own isolated Supabase stack** — separate Postgres, GoTrue, Kong, Storage, Realtime and Studio.
+
+## One-click deploy
+
+1. Install Coolify on a fresh server:
+
+\`\`\`bash
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+\`\`\`
+
+2. In Coolify, click **Add Service** → search **Supabase Multitenant** → **Deploy**.
+3. Coolify provisions Postgres + the panel, injects secure credentials, assigns a domain, and serves it over **HTTPS**.
+4. Open the panel URL → create your admin account → **Initialize** → **Create Project**.
+
+## Manual import
+
+Not in your marketplace yet? Add a **Docker Compose** resource in Coolify and paste the compose file from \`deploy/coolify/supabase-multitenant.yml\` in the repo. Coolify injects the DB credentials, the session secret and the panel domain.
+
+> Coolify substitutes magic variables like \`\${SERVICE_FQDN_PANEL}\` into routing labels for the **service-template** path. When you import a compose file manually, set the panel domain in the \`Host(...)\` rule yourself. See the [deployment folder](https://github.com/supabase-multitenant/supabase-multitenant/tree/main/deploy/coolify).
+
+## Prefer the one-line install?
+
+If you'd rather run it directly on a server, use the [Quick start](/docs/quick-start) or the [Installation guide](/docs/installation).
+`
+
 export const PAGES: DocPage[] = [
   { slug: 'introduction', group: 'getting-started', title: 'Introduction', description: 'What Supabase Multitenant is and the problem it solves.', content: introduction },
   { slug: 'quick-start', group: 'getting-started', title: 'Quick start', description: 'Get a running platform in a few minutes.', content: quickStart },
   { slug: 'installation', group: 'getting-started', title: 'Installation', description: 'Install on a fresh Linux server.', content: installation },
+  { slug: 'coolify-deploy', group: 'getting-started', title: 'Deploy with Coolify', description: 'Self-host in a couple of clicks with Coolify.', content: coolifyDeploy },
   { slug: 'local-development', group: 'getting-started', title: 'Local development', description: 'Run the panel locally for development.', content: localDevelopment },
 
   { slug: 'architecture', group: 'architecture', title: 'Architecture', description: 'The control plane and isolated data planes.', content: architecture },

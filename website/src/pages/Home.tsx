@@ -61,6 +61,12 @@ export function Home() {
             >
               Read the docs
             </Link>
+            <Link
+              to="/docs/coolify-deploy"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-brand-400/40 bg-brand-400/10 px-6 py-3 text-sm font-semibold text-brand-300 transition-colors hover:bg-brand-400/20 sm:w-auto"
+            >
+              Self-host on Coolify
+            </Link>
           </div>
 
           {/* Terminal */}

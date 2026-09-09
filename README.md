@@ -8,24 +8,46 @@
   <p>
     <a href="https://supabase-multitenant.github.io">🌐 Website</a> ·
     <a href="https://github.com/supabase-multitenant/supabase-multitenant">GitHub</a> ·
+    <a href="docs/SELF-HOSTING.md">Self-host</a> ·
     <a href="docs/TESTING.md">Docs</a>
   </p>
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://hub.docker.com)
+  [![Docker Hub](https://img.shields.io/badge/docker-available-2496ED.svg)](https://hub.docker.com/r/webboxes/supabase-multitenant)
+  [![Coolify](https://img.shields.io/badge/coolify-one--click-3D8B99.svg)](https://coolify.io)
   [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org)
+  [![Node](https://img.shields.io/badge/Node.js-20-green.svg)](https://nodejs.org)
 </div>
 
 ---
 
-**supabase-multitenant** lets you self-host Supabase as your own Supabase.com-style cloud, running anywhere you choose—VPS, Coolify, Dokku, Dokploy, or your own infrastructure. Manage everything from one platform: 1 infrastructure, many isolated Supabase databases, giving you flexible deployment, control, and scalable multitenancy.
+**Supabase Multitenant** is your own **Supabase.com, on your own servers**. One control plane — and every project you create spins up its own **fully isolated Supabase stack** (Postgres, Auth, API, Storage, Realtime, Studio).
+
+The whole idea in one line: **1 infrastructure, many isolated databases.**
+
+- 🚀 **Deploy anywhere** — a VPS, Coolify, Dokku, Dokploy, or bare metal.
+- 🌐 **Real Supabase** — each project is a real, isolated Supabase stack, not a mock.
+- 🔒 **You own the keys** — data stays on hardware you control. No vendor lock-in.
+- ⚡ **Go live in minutes** — one command, or a couple of clicks in Coolify.
+
+## Screenshots
+
+<div align="center">
+  <img src="public/demo.png" alt="Supabase Multitenant dashboard" width="900" />
+  <p><em>One dashboard to create, configure and deploy every isolated Supabase project.</em></p>
+  <br />
+  <img src="public/demo_page_dashboard-smt.png" alt="Isolated Supabase project detail" width="900" />
+  <p><em>Each project is a real, isolated Supabase stack — Auth, API (Kong), Storage, Realtime, Studio — on your own hardware.</em></p>
+</div>
 
 ---
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Why Supabase Multitenant?](#why-supabase-multitenant)
 - [Features](#features)
+- [Deploy with Coolify (self-hosted)](#deploy-with-coolify-self-hosted)
 - [Quick Start](#quick-start)
 - [Tech Stack](#tech-stack)
 - [Usage Guide](#usage-guide)
@@ -66,6 +88,29 @@ Perfect for agencies, development teams, and organizations that need to manage m
 
 ---
 
+## Deploy with Coolify (self-hosted)
+
+Supabase Multitenant ships as a **one-click service** for [Coolify](https://coolify.io), so you can self-host it in a couple of clicks — no YAML editing, no manual Traefik or SSL config.
+
+First you need a server with Docker and Coolify installed:
+
+```bash
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+```
+
+Then, from your Coolify dashboard:
+
+1. Click **Add Service**.
+2. Search for **Supabase Multitenant** → click **Deploy**.
+3. Coolify provisions a Postgres instance plus the panel, injects secure credentials, assigns a domain, and serves it over **HTTPS** through Coolify's built-in Traefik proxy.
+4. Open the panel URL, create your admin account, click **Initialize**, then **Create Project** to spin up your first isolated Supabase stack.
+
+> **Not in your marketplace yet?** Deploy the same stack directly: in Coolify, add a **Docker Compose** resource and paste the compose file from [`deploy/coolify/supabase-multitenant.yml`](deploy/coolify/supabase-multitenant.yml). Coolify injects the Postgres credentials, the session secret, and the panel domain automatically.
+
+That's the multi-tenant bit: **one control plane, and every "Create Project" runs a fully isolated Supabase database** — its own Postgres, GoTrue, Kong, Storage and Realtime — exactly like Supabase Cloud, but on hardware you own. See [`deploy/coolify/`](deploy/coolify/) for the template details.
+
+---
+
 ## Quick Start
 
 ### Production Deployment
@@ -73,7 +118,7 @@ Perfect for agencies, development teams, and organizations that need to manage m
 Deploy Supabase Multitenant on any fresh Linux server (Ubuntu 22.04+, Debian 11+):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/supabase-multitenant/supabase-multitenant/main/install.sh | sh
+curl -sSL https://supabase-multitenant.github.io/get | sh
 ```
 
 > Alternatively, clone the repo and run `sh install.sh` as root.
