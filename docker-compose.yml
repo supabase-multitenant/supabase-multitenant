@@ -1,12 +1,12 @@
 # Supabase Multitenant — production deploy (Coolify dockercompose build-pack)
-# Deploys the control-plane panel + its metadata Postgres. The panel mounts the
-# host Docker socket so, from its UI, you can create isolated Supabase stacks.
-# This mirrors deploy/coolify/supabase-multitenant.yml (the one-click template).
+# Control-plane panel + metadata Postgres. The panel mounts the host Docker
+# socket so, from its UI, you can create isolated Supabase stacks.
+# Postgres is named 'db' (not 'postgres') to avoid any DNS alias collision.
 
 name: supabase-multitenant
 
 services:
-  postgres:
+  db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -27,11 +27,11 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     environment:
       SUPABASE_MULTITENANT_MODE: production
-      DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-supabase_multitenant}:${SERVICE_PASSWORD_POSTGRES:-supabase_multitenant}@postgres:5432/supabase_multitenant
+      DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-supabase_multitenant}:${SERVICE_PASSWORD_POSTGRES:-supabase_multitenant}@db:5432/supabase_multitenant
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-supabase-multitenant-change-me-please}
       NEXTAUTH_URL: http://localhost:3000
       APP_NAME: ${APP_NAME:-Supabase Multitenant}
@@ -41,12 +41,6 @@ services:
     volumes:
       - panel_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - coolify
-
-networks:
-  coolify:
-    external: true
 
 volumes:
   postgres_data:
