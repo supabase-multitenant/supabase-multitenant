@@ -121,7 +121,7 @@ export default function RegisterPage() {
           <CardHeader className="space-y-1">
             <div className="flex justify-center mb-4">
               <Image
-                src="/supabase-multitenant-logo.png"
+                src="/supabase-multitenant-logo-transparent.png"
                 alt="Supabase Multitenant"
                 width={200}
                 height={200}
@@ -159,7 +159,7 @@ export default function RegisterPage() {
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-4">
             <Image
-              src="/supabase-multitenant-logo.png"
+              src="/supabase-multitenant-logo-transparent.png"
               alt="Supabase Multitenant"
               width={200}
               height={200}

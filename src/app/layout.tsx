@@ -16,9 +16,9 @@ export const metadata: Metadata = {
   title: "Supabase Multitenant",
   description: "Self-hosted dashboard for managing multiple Supabase projects with Docker",
   icons: {
-    icon: '/supabase-multitenant-logo.png',
-    shortcut: '/supabase-multitenant-logo.png',
-    apple: '/supabase-multitenant-logo.png',
+    icon: '/supabase-multitenant-logo-transparent.png',
+    shortcut: '/supabase-multitenant-logo-transparent.png',
+    apple: '/supabase-multitenant-logo-transparent.png',
   },
 };
 

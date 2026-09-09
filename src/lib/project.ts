@@ -130,8 +130,12 @@ export async function initializeSupabaseCore() {
     if (!coreExists) {
       const repoUrl = process.env.SUPABASE_CORE_REPO_URL || 'https://github.com/supabase/supabase'
 
-      // Use shallow clone for faster download
-      await execAsync(`git clone --depth 1 ${repoUrl} supabase-core`)
+      // Use shallow clone for faster download.
+      // Clone to the ABSOLUTE core path (DATA_PATH/core in production) so it
+      // matches where createProject() reads /data/core/docker from. Cloning to
+      // a bare relative name would land in the container CWD and never be found.
+      await fs.mkdir(path.dirname(coreDir), { recursive: true })
+      await execAsync(`git clone --depth 1 ${repoUrl} "${coreDir}"`)
     }
 
     return { success: true }

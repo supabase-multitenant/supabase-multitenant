@@ -67,7 +67,7 @@ export default function CreateProjectPage() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Image 
-              src="/supabase-multitenant-logo.png" 
+              src="/supabase-multitenant-logo-transparent.png" 
               alt="Supabase Multitenant" 
               width={150} 
               height={150}
