@@ -71,6 +71,7 @@ export function ProjectClient({
   permissions,
   studioBaseUrl,
   publicUrl,
+  internalUrl,
   keys,
   backups,
 }: {
@@ -79,6 +80,7 @@ export function ProjectClient({
   permissions: string[]
   studioBaseUrl: string | null
   publicUrl: string | null
+  internalUrl: string | null
   keys: Array<{ key: string; value: string }>
   backups: BackupRow[]
 }) {
@@ -247,10 +249,27 @@ export function ProjectClient({
                   </button>
                 </div>
               </div>
+            ) : internalUrl ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+                <p className="text-xs font-medium text-amber-300">Not publicly reachable yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  This project only listens internally, so this address is not usable from another
+                  machine. Set a domain under <span className="text-foreground">Configure</span> to
+                  publish an API URL.
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+                    {internalUrl}
+                  </code>
+                  <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    host only
+                  </span>
+                </div>
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">
                 {can('env:read')
-                  ? 'No public URL recorded for this project.'
+                  ? 'No address recorded for this project.'
                   : 'Connection details require the “env:read” permission, which your role does not include.'}
               </p>
             )}

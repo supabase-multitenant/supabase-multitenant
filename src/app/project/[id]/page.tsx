@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { AppTopbar } from '@/components/app-topbar'
 import { getSessionUser } from '@/lib/auth'
-import { ALL_PERMISSIONS, hasPermission, type Permission } from '@/lib/authz'
+import { ORG_PERMISSIONS, hasPermission, type Permission } from '@/lib/authz'
 import { loadOrgAccess, type OrgAccess } from '@/lib/access'
 import { prisma } from '@/lib/db'
 import { listBackups } from '@/lib/backup'
@@ -51,7 +51,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           role: 'owner',
           customRoleId: null,
           customRoleName: null,
-          permissions: [...ALL_PERMISSIONS],
+          permissions: [...ORG_PERMISSIONS],
           isOwner: true,
         }
       : null
@@ -83,7 +83,18 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       })
     : []
 
-  const publicUrl = can('env:read')
+  /**
+   * Is this an address only reachable from the host itself?
+   *
+   * `project.domain` is the admin-configured public host. The stored
+   * SUPABASE_PUBLIC_URL is the *internal* one and points at localhost, so it
+   * must never be presented as the project's API URL to someone who wants to
+   * connect an app to it.
+   */
+  const isLocalAddress = (value: string | null) =>
+    !!value && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(value)
+
+  const storedPublicUrl = can('env:read')
     ? ((
         await prisma.projectEnvVar.findFirst({
           where: { projectId: id, key: 'SUPABASE_PUBLIC_URL' },
@@ -91,6 +102,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         })
       )?.value ?? null)
     : null
+
+  const configuredDomain = project.domain ? `https://${project.domain}` : null
+  const publicUrl =
+    configuredDomain ?? (isLocalAddress(storedPublicUrl) ? null : storedPublicUrl)
+  const internalUrl = isLocalAddress(storedPublicUrl) ? storedPublicUrl : null
 
   const panelHost =
     process.env.AUTH_URL?.replace(/^https?:\/\//, '').replace(/\/+$/, '') ?? null
@@ -122,6 +138,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         permissions={permissions as string[]}
         studioBaseUrl={panelHost ? `https://${panelHost}` : null}
         publicUrl={publicUrl}
+        internalUrl={internalUrl}
         keys={keys}
         backups={backups.map((b) => ({
           id: b.id,

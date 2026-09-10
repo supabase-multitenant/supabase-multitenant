@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from './db'
 import { getSession, unauthorized, notFound, type Session } from './api-auth'
 import {
-  ALL_PERMISSIONS,
+  ORG_PERMISSIONS,
   hasPermission,
   resolveEffectivePermissions,
   type Permission,
@@ -45,7 +45,7 @@ export async function loadOrgAccess(userId: string, organizationId: string): Pro
       role: 'owner',
       customRoleId: null,
       customRoleName: null,
-      permissions: [...ALL_PERMISSIONS],
+      permissions: [...ORG_PERMISSIONS],
       isOwner: true,
     }
   }
@@ -136,7 +136,7 @@ export async function requireProjectPermission(
         role: 'owner',
         customRoleId: null,
         customRoleName: null,
-        permissions: [...ALL_PERMISSIONS],
+        permissions: [...ORG_PERMISSIONS],
         isOwner: true,
       },
       session,

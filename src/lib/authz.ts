@@ -78,6 +78,21 @@ export type Permission = keyof typeof PERMISSION_CATALOG
 
 export const ALL_PERMISSIONS = Object.keys(PERMISSION_CATALOG) as Permission[]
 
+/**
+ * Permissions that govern the panel itself rather than any organization.
+ *
+ * These must never appear in an organization-scoped permission set: an
+ * organization's owner is not thereby entitled to change how the host routes
+ * traffic or to bootstrap the Supabase core. Panel-wide powers come from being
+ * the panel owner (`User.role`), not from owning a tenant.
+ */
+export const PANEL_WIDE_PERMISSIONS: readonly Permission[] = ['system:manage'] as const
+
+/** Everything an organization-scoped role may hold. */
+export const ORG_PERMISSIONS: readonly Permission[] = ALL_PERMISSIONS.filter(
+  (p) => !PANEL_WIDE_PERMISSIONS.includes(p)
+)
+
 /** Catalog grouped for rendering a permission picker. */
 export function permissionsByGroup(): Array<{ group: string; permissions: Permission[] }> {
   const groups = new Map<string, Permission[]>()

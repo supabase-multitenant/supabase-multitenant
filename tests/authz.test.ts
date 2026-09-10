@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 
 import {
   ALL_PERMISSIONS,
+  ORG_PERMISSIONS,
+  PANEL_WIDE_PERMISSIONS,
   BUILT_IN_ROLES,
   PERMISSION_CATALOG,
   ROLE_DEFINITIONS,
@@ -391,5 +393,36 @@ describe('grant checks', () => {
     expect(isSubsetOf(['project:read'], perms('viewer'))).toBe(true)
     expect(isSubsetOf(['project:read', 'project:read'], perms('viewer'))).toBe(true)
     expect(isSubsetOf(['org:delete'], perms('viewer'))).toBe(false)
+  })
+})
+
+describe('panel-wide permissions never belong to an organization', () => {
+  it('an organization owner holds every organization permission', () => {
+    expect([...ORG_PERMISSIONS]).toEqual(
+      ALL_PERMISSIONS.filter((p) => !PANEL_WIDE_PERMISSIONS.includes(p))
+    )
+  })
+
+  it('the panel-wide permission is excluded from an organization set', () => {
+    // Regression guard: an org owner was being handed system:manage, which
+    // governs the panel's own routing and host bootstrap. Owning a tenant must
+    // never imply that.
+    expect(ORG_PERMISSIONS).not.toContain('system:manage')
+    expect(PANEL_WIDE_PERMISSIONS).toContain('system:manage')
+  })
+
+  it('no built-in non-owner role holds a panel-wide permission', () => {
+    for (const role of ['viewer', 'developer', 'admin'] as BuiltInRole[]) {
+      for (const p of PANEL_WIDE_PERMISSIONS) {
+        expect(can(role, p), `${role} must not hold ${p}`).toBe(false)
+      }
+    }
+  })
+
+  it('organization permissions are already grantable by an organization owner', () => {
+    // The anti-escalation rule stays consistent: an org owner can confer exactly
+    // the organization-scoped permissions, and nothing more.
+    expect(canGrantPermissions([...ORG_PERMISSIONS], [...ORG_PERMISSIONS])).toBe(true)
+    expect(canGrantPermissions([...ORG_PERMISSIONS], [...ALL_PERMISSIONS])).toBe(false)
   })
 })
