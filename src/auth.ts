@@ -1,9 +1,11 @@
 import NextAuth, { type NextAuthConfig } from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
+import Google from 'next-auth/providers/google'
 import GitHub from 'next-auth/providers/github'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
+import { evaluateOAuthSignIn, isOAuthProviderConfigured } from '@/lib/oauth'
 
 /**
  * Auth.js (next-auth v5) — see docs/adr/0001-authjs.md
@@ -52,7 +54,24 @@ const providers: NextAuthConfig['providers'] = [
   }),
 ]
 
-if (process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET) {
+// OAuth providers are only advertised when their credentials are actually
+// present, so an unconfigured panel shows no dead buttons.
+if (isOAuthProviderConfigured('google')) {
+  providers.push(
+    Google({
+      clientId: process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      // Linking an OAuth identity to an existing account by matching email is
+      // only enabled because the signIn callback below refuses any address the
+      // provider has not verified (and, for providers that report nothing, any
+      // address we have not already verified ourselves). Without that gate this
+      // flag is an account-takeover vector.
+      allowDangerousEmailAccountLinking: true,
+    }),
+  )
+}
+
+if (isOAuthProviderConfigured('github')) {
   providers.push(
     GitHub({
       clientId: process.env.AUTH_GITHUB_ID,
@@ -60,6 +79,20 @@ if (process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET) {
       allowDangerousEmailAccountLinking: true,
     }),
   )
+}
+
+/**
+ * Where to send someone the gate refused.
+ *
+ * Auth.js only lets the callback answer with a URL or a plain false, so the
+ * refusal code travels in the query string and the login screen maps it to a
+ * sentence. Absolute when we know our own origin, otherwise Auth.js falls back
+ * to its generic AccessDenied page.
+ */
+function oauthDeniedRedirect(code: string): string | false {
+  const base = (process.env.AUTH_URL || process.env.NEXTAUTH_URL || '').replace(/\/+$/, '')
+  if (!base) return false
+  return `${base}/auth/login?error=oauth_denied&reason=${encodeURIComponent(code)}`
 }
 
 export const authConfig: NextAuthConfig = {
@@ -83,6 +116,65 @@ export const authConfig: NextAuthConfig = {
     },
   },
   callbacks: {
+    /**
+     * The invite-only boundary, applied to OAuth.
+     *
+     * Email/password registration enforces it in its own route, but an OAuth
+     * provider does not: with a bare provider configured, the adapter would
+     * create an account for any stranger who completes the provider's flow. This
+     * is what keeps "sign in with Google" from turning the panel public, and
+     * what makes email-matching account linking safe.
+     */
+    async signIn({ user, account, profile }) {
+      const provider = account?.provider ?? ''
+
+      // Credentials sign-ins were already authorised inside their provider.
+      if (provider === 'credentials') return true
+
+      const raw = (profile ?? {}) as Record<string, unknown>
+      const email = (typeof raw.email === 'string' ? raw.email : user?.email) ?? null
+
+      // Google reports `email_verified`; GitHub does not report it at all, and
+      // "not reported" must not be read as "verified".
+      const emailVerified =
+        typeof raw.email_verified === 'boolean' ? raw.email_verified : null
+
+      const normalized = email?.trim().toLowerCase() ?? ''
+
+      let existingUser = false
+      let knownAddressVerified = false
+      if (normalized) {
+        const found = await prisma.user.findUnique({
+          where: { email: normalized },
+          select: { id: true, emailVerified: true },
+        })
+        existingUser = Boolean(found)
+        knownAddressVerified = Boolean(found?.emailVerified)
+      }
+
+      const pendingInvitation =
+        normalized.length > 0 &&
+        (await prisma.invitation.count({
+          where: { email: normalized, status: 'pending', expiresAt: { gt: new Date() } },
+        })) > 0
+
+      const verdict = evaluateOAuthSignIn({
+        provider,
+        email,
+        emailVerified,
+        existingUser,
+        knownAddressVerified,
+        pendingInvitation,
+      })
+
+      if (verdict.allow) {
+        console.log(`[auth] oauth allowed: ${provider} ${normalized} (${verdict.reason})`)
+        return true
+      }
+
+      console.warn(`[auth] oauth refused: ${provider} ${normalized || '(no email)'} — ${verdict.code}`)
+      return oauthDeniedRedirect(verdict.code)
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = (user as { id?: string }).id

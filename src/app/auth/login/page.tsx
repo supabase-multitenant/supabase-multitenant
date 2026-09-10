@@ -4,9 +4,24 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import Link from 'next/link'
-import { BookOpen, Eye, EyeOff, Github, KeyRound, Sparkles } from 'lucide-react'
+import { BookOpen, Chrome, Eye, EyeOff, Github } from 'lucide-react'
 import { BrandLogo } from '@/components/brand'
 import { ThemeToggle } from '@/components/theme-toggle'
+
+/**
+ * Why an OAuth sign-in was refused, in words the person can act on.
+ *
+ * The codes come from src/lib/oauth.ts; the server never sends free text.
+ */
+const OAUTH_DENY_MESSAGES: Record<string, string> = {
+  no_email: 'That account did not share an email address, so it cannot be matched to a user.',
+  email_unverified:
+    "That account's email address is not verified by the provider, so it cannot be used to sign in.",
+  invite_only:
+    'This panel is invite-only. Ask an administrator to invite this email address first.',
+  provider_unverified:
+    'That provider does not confirm email verification, and this address is not verified here.',
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -14,6 +29,8 @@ export default function LoginPage() {
   const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
+  const [providers, setProviders] = useState<string[]>([])
+  const [oauthError, setOauthError] = useState('')
   const [error, setError] = useState('')
   const router = useRouter()
 
@@ -35,6 +52,33 @@ export default function LoginPage() {
     }
     checkSetupStatus()
   }, [router])
+
+  // Which OAuth providers this deployment actually has, and any refusal to explain.
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/auth/providers')
+        if (res.ok) {
+          const data = (await res.json()) as Record<string, unknown>
+          if (!cancelled) setProviders(Object.keys(data ?? {}))
+        }
+      } catch {
+        // No providers advertised — the buttons simply do not appear.
+      }
+    })()
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('error') === 'oauth_denied') {
+      const code = params.get('reason') ?? ''
+      setOauthError(OAUTH_DENY_MESSAGES[code] ?? 'That sign-in was refused.')
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,11 +111,15 @@ export default function LoginPage() {
     )
   }
 
-  const oauth = [
-    { icon: Github, label: 'Continue with GitHub', enabled: true, onClick: () => signIn('github') },
-    { icon: Sparkles, label: 'Continue with Google', enabled: false },
-    { icon: KeyRound, label: 'Continue with SSO', enabled: false },
-  ]
+  // Only advertise what this deployment actually has configured, so nobody is
+  // offered a button that cannot work.
+  const oauth: Array<{ id: string; icon: typeof Github; label: string }> = []
+  if (providers.includes('google')) {
+    oauth.push({ id: 'google', icon: Chrome, label: 'Continue with Google' })
+  }
+  if (providers.includes('github')) {
+    oauth.push({ id: 'github', icon: Github, label: 'Continue with GitHub' })
+  }
 
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-2">
@@ -81,26 +129,34 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold text-foreground">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in to your account</p>
 
-          <div className="mt-8 space-y-2.5">
-            {oauth.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                disabled={!p.enabled}
-                onClick={p.onClick}
-                title={p.enabled ? undefined : 'Not configured yet'}
-                className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-surface py-2.5 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <p.icon className="h-4 w-4" /> {p.label}
-              </button>
-            ))}
-          </div>
+          {oauth.length > 0 && (
+            <>
+              <div className="mt-8 space-y-2.5">
+                {oauth.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => void signIn(p.id)}
+                    className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-surface py-2.5 text-sm text-foreground transition-colors hover:bg-accent"
+                  >
+                    <p.icon className="h-4 w-4" /> {p.label}
+                  </button>
+                ))}
+              </div>
 
-          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
-          </div>
+              <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" /> or{' '}
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </>
+          )}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className={oauth.length ? 'space-y-4' : 'mt-8 space-y-4'} onSubmit={handleSubmit}>
+            {oauthError ? (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm text-amber-300">
+                {oauthError}
+              </p>
+            ) : null}
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <div>
               <label htmlFor="email" className="text-xs font-medium text-foreground">
