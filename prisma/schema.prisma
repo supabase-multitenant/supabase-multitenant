@@ -33,6 +33,8 @@ model User {
   sessions    Session[]
   projects    Project[]
   teamMembers TeamMember[]
+  organizations       Organization[]
+  organizationMembers OrganizationMember[]
 
   @@map("users")
 }
@@ -92,6 +94,7 @@ model Project {
   domainVerified Boolean  @default(false) // Whether the API domain is verified
   studioDomain   String?  // Custom domain for Supabase Studio
   studioDomainVerified Boolean @default(false) // Whether the Studio domain is verified
+  region         String?  // e.g. eu-central-1
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -99,10 +102,51 @@ model Project {
   ownerId     String
   owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  // Organization (nullable: existing projects are adopted by a default org)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
   // Relations
   envVars     ProjectEnvVar[]
 
   @@map("projects")
+}
+
+// ---------------------------------------------------------------------------
+// Organizations (Supabase-like grouping of projects + members)
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("Free") // Free | Pro | Team
+  type      String   @default("Personal") // Personal | Company | Educational | Agency
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  members  OrganizationMember[]
+  projects Project[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id        String   @id @default(uuid())
+  role      String   @default("member") // owner | admin | member
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  userId         String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
 }
 
 model ProjectEnvVar {

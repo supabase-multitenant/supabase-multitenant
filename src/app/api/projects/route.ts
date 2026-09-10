@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { name, description = '' } = await request.json()
+    const { name, description = '', organizationId, region, databasePassword } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -65,7 +65,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await createProject(name, session.user.id, description)
+    // If an organization was supplied, the caller must belong to it.
+    if (organizationId) {
+      const membership = await prisma.organization.findFirst({
+        where: {
+          id: organizationId,
+          OR: [
+            { ownerId: session.user.id },
+            { members: { some: { userId: session.user.id } } },
+          ],
+        },
+        select: { id: true },
+      })
+      if (!membership) {
+        return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+      }
+    }
+
+    const result = await createProject(
+      name,
+      session.user.id,
+      description,
+      { organizationId, region, databasePassword },
+    )
 
     if (!result.success) {
       return NextResponse.json(

@@ -145,7 +145,16 @@ export async function initializeSupabaseCore() {
   }
 }
 
-export async function createProject(name: string, userId: string, description?: string) {
+export async function createProject(
+  name: string,
+  userId: string,
+  description?: string,
+  options: {
+    organizationId?: string | null
+    region?: string
+    databasePassword?: string
+  } = {},
+) {
   try {
     // Generate unique slug
     const timestamp = Date.now()
@@ -158,6 +167,8 @@ export async function createProject(name: string, userId: string, description?: 
         slug,
         description,
         ownerId: userId,
+        organizationId: options.organizationId ?? null,
+        region: options.region ?? null,
       },
     })
 
