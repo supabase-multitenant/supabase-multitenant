@@ -33,6 +33,7 @@ model User {
   sessions    Session[]
   projects    Project[]
   teamMembers TeamMember[]
+  passwordResetTokens PasswordResetToken[]
   organizations       Organization[]
   organizationMembers OrganizationMember[]
 
@@ -164,6 +165,28 @@ model Organization {
 }
 
 /**
+ * A one-time password reset token.
+ *
+ * Same discipline as invitations: only the hash is stored, so a leaked database
+ * cannot be replayed; single use; short-lived.
+ */
+model PasswordResetToken {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+/**
  * An invitation to join an organization.
  *
  * The raw token is never stored — only its hash — so a database leak cannot be
@@ -285,16 +308,6 @@ model TeamMember {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("team_members")
-}
-
-model PasswordResetToken {
-  id        String   @id @default(uuid())
-  email     String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@map("password_reset_tokens")
 }
 
 model PanelSettings {
