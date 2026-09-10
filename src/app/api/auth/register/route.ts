@@ -3,8 +3,12 @@ import { prisma } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
 
 /**
- * First-admin registration. Only allowed while no user exists.
- * The session is created by Auth.js afterwards (the client signs in).
+ * Registration.
+ *
+ * The very first account bootstraps the panel and becomes its owner.
+ * After that, registration is **invite-only**: a valid, unexpired invitation for
+ * the exact address is the ticket in. That is what makes an invitation link
+ * usable by someone who has no account yet.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -14,17 +18,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    // Check if any users exist - only allow first user registration
+    const normalizedEmail = String(email).toLowerCase()
     const userCount = await prisma.user.count()
+
     if (userCount > 0) {
-      return NextResponse.json(
-        { error: 'Registration is closed. Contact an administrator to request access.' },
-        { status: 403 },
-      )
+      const invitation = await prisma.invitation.findFirst({
+        where: {
+          email: normalizedEmail,
+          status: 'pending',
+          expiresAt: { gt: new Date() },
+        },
+        select: { id: true },
+      })
+
+      if (!invitation) {
+        return NextResponse.json(
+          {
+            error: 'Registration is invite-only.',
+            hint: 'Ask an administrator to invite this email address first.',
+          },
+          { status: 403 }
+        )
+      }
     }
 
     const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email: normalizedEmail },
     })
     if (existingUser) {
       return NextResponse.json({ error: 'User already exists' }, { status: 400 })
@@ -32,13 +51,14 @@ export async function POST(request: NextRequest) {
 
     const hashedPassword = await hashPassword(password)
 
-    // The very first account is the owner.
+    // Only the bootstrapping account is a global owner; everyone else joins
+    // through an organization membership.
     const user = await prisma.user.create({
       data: {
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         password: hashedPassword,
         name: name || null,
-        role: 'owner',
+        role: userCount === 0 ? 'owner' : 'member',
         emailVerified: new Date(),
       },
     })
