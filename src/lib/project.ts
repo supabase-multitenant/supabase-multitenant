@@ -5,6 +5,7 @@ import { promisify } from 'util'
 import { prisma } from './db'
 import { removeProjectTraefikConfig } from './traefik'
 import { getCoreBasePath, getProjectsBasePath } from './paths'
+import { namespaceContainerNames } from './compose'
 
 const execAsync = promisify(exec)
 
@@ -191,30 +192,12 @@ export async function createProject(
     const dockerComposeFile = path.join(projectDir, 'docker', 'docker-compose.yml')
     let dockerComposeContent = await fs.readFile(dockerComposeFile, 'utf8')
 
-    // Replace container names with project-specific names
-    const containerMappings = [
-      { original: 'supabase-studio', replacement: `${slug}-studio` },
-      { original: 'supabase-kong', replacement: `${slug}-kong` },
-      { original: 'supabase-auth', replacement: `${slug}-auth` },
-      { original: 'supabase-rest', replacement: `${slug}-rest` },
-      { original: 'realtime-dev.supabase-realtime', replacement: `realtime-dev.${slug}-realtime` },
-      { original: 'supabase-storage', replacement: `${slug}-storage` },
-      { original: 'supabase-imgproxy', replacement: `${slug}-imgproxy` },
-      { original: 'supabase-meta', replacement: `${slug}-meta` },
-      { original: 'supabase-edge-functions', replacement: `${slug}-edge-functions` },
-      { original: 'supabase-analytics', replacement: `${slug}-analytics` },
-      { original: 'supabase-db', replacement: `${slug}-db` },
-      { original: 'supabase-vector', replacement: `${slug}-vector` },
-      { original: 'supabase-pooler', replacement: `${slug}-pooler` }
-    ]
-
-    // Replace container names in the compose file
-    for (const mapping of containerMappings) {
-      dockerComposeContent = dockerComposeContent.replace(
-        new RegExp(`container_name: ${mapping.original}`, 'g'),
-        `container_name: ${mapping.replacement}`
-      )
-    }
+    // Namespace every container to this project. A missed container keeps a global
+    // name and lets a second project collide with (or hijack) this one's service —
+    // exactly what happened to the API gateway (`supabase-envoy`, issue #104).
+    // namespaceContainerNames() maps generically and *throws* rather than emit a
+    // stack containing a shared container name.
+    dockerComposeContent = namespaceContainerNames(dockerComposeContent, slug)
 
     // Update the compose project name to be unique
     dockerComposeContent = dockerComposeContent.replace(
