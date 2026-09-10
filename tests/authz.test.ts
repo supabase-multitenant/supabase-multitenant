@@ -69,7 +69,7 @@ describe('role capability matrix', () => {
         'project:create', 'project:update', 'project:delete', 'project:deploy',
         'env:read', 'env:write', 'db:sql', 'backup:create', 'backup:restore', 'backup:delete',
         'member:invite', 'member:update', 'member:remove', 'role:manage',
-        'org:update', 'org:delete',
+        'org:update', 'org:delete', 'system:manage',
       ],
     },
     developer: {
@@ -81,14 +81,15 @@ describe('role capability matrix', () => {
         'project:deploy', 'env:read', 'env:write', 'db:sql', 'backup:create', 'backup:restore',
       ],
       cannot: [
-        'org:update', 'org:delete',
+        'org:update', 'org:delete', 'system:manage',
         'member:invite', 'member:update', 'member:remove', 'role:manage',
         'project:create', 'project:update', 'project:delete', 'backup:delete',
       ],
     },
     admin: {
-      can: ALL_PERMISSIONS.filter((p) => p !== 'org:delete'),
-      cannot: ['org:delete'],
+      // Everything except deleting the organization and changing panel-wide settings.
+      can: ALL_PERMISSIONS.filter((p) => p !== 'org:delete' && p !== 'system:manage'),
+      cannot: ['org:delete', 'system:manage'],
     },
     owner: {
       can: [...ALL_PERMISSIONS],
@@ -151,6 +152,15 @@ describe('role escalation invariants', () => {
       expect(can(role, 'org:delete')).toBe(false)
     }
     expect(can('owner', 'org:delete')).toBe(true)
+  })
+
+  it('panel-wide settings stay with the owner, never with an admin', () => {
+    // `system:manage` changes the panel itself (routing, host bootstrap), so it
+    // is deliberately outside the org-scoped hierarchy.
+    for (const role of ['viewer', 'developer', 'admin'] as BuiltInRole[]) {
+      expect(can(role, 'system:manage'), role).toBe(false)
+    }
+    expect(can('owner', 'system:manage')).toBe(true)
   })
 
   it('viewer cannot do anything mutating', () => {
@@ -343,9 +353,10 @@ describe('grant checks', () => {
     expect(canGrantPermissions(perms('viewer'), perms('developer'))).toBe(false)
   })
 
-  it('keeps owner-only: only an owner holds org:delete, so only an owner can mint an owner', () => {
+  it('keeps owner-only: two privileges sit above admin, so only an owner can mint an owner', () => {
     const excess = perms('owner').filter((p) => !perms('admin').includes(p))
-    expect(excess).toEqual(['org:delete'])
+    // Deleting the organization, and changing panel-wide settings.
+    expect(excess.sort()).toEqual(['org:delete', 'system:manage'])
     expect(canGrantPermissions(perms('admin'), perms('owner'))).toBe(false)
   })
 

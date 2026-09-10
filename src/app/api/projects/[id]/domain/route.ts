@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { validateSession } from '@/lib/auth'
-import { cookies } from 'next/headers'
+import { requireProjectPermission } from '@/lib/access'
 import { generateProjectTraefikConfig, verifyDomainDNS, getProjectPorts } from '@/lib/traefik'
 
 /**
@@ -13,18 +12,9 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        // Validate session
-        const cookieStore = await cookies()
-        const sessionToken = cookieStore.get('session')?.value
-        if (!sessionToken) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-        const session = await validateSession(sessionToken)
-        if (!session) {
-            return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-        }
-
         const { id } = await params
+        const auth = await requireProjectPermission(request, id, 'project:read')
+        if (auth.response) return auth.response
 
         const project = await prisma.project.findUnique({
             where: { id },
@@ -62,18 +52,10 @@ export async function PUT(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        // Validate session
-        const cookieStore = await cookies()
-        const sessionToken = cookieStore.get('session')?.value
-        if (!sessionToken) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-        const session = await validateSession(sessionToken)
-        if (!session) {
-            return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-        }
-
         const { id } = await params
+        const auth = await requireProjectPermission(request, id, 'project:update')
+        if (auth.response) return auth.response
+
         const { domain, studioDomain } = await request.json()
 
         // Validate domain format
@@ -207,18 +189,9 @@ export async function DELETE(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        // Validate session
-        const cookieStore = await cookies()
-        const sessionToken = cookieStore.get('session')?.value
-        if (!sessionToken) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-        const session = await validateSession(sessionToken)
-        if (!session) {
-            return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-        }
-
         const { id } = await params
+        const auth = await requireProjectPermission(request, id, 'project:update')
+        if (auth.response) return auth.response
 
         const project = await prisma.project.findUnique({
             where: { id },

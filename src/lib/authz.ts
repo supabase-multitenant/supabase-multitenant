@@ -65,6 +65,13 @@ export const PERMISSION_CATALOG = {
   'analytics:read': { group: 'Insights', label: 'View usage and analytics' },
   'audit:read': { group: 'Insights', label: 'View the audit log' },
   'billing:read': { group: 'Insights', label: 'View billing' },
+
+  // System — panel-wide, not scoped to an organization
+  'system:manage': {
+    group: 'System',
+    label: 'Change panel-wide settings and bootstrap the host',
+    sensitive: true,
+  },
 } as const satisfies Record<string, PermissionMeta>
 
 export type Permission = keyof typeof PERMISSION_CATALOG

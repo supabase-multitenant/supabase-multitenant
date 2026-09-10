@@ -1,25 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { validateSession } from '@/lib/auth'
-import { cookies } from 'next/headers'
+import { getSession, unauthorized } from '@/lib/api-auth'
+import { recordAudit, requirePanelOwner } from '@/lib/access'
 import { generatePanelTraefikConfig, verifyDomainDNS } from '@/lib/traefik'
 
 /**
- * GET /api/settings/panel-domain
- * Get the panel domain configuration
+ * The panel's own domain.
+ *
+ * Changing it rewrites how this host routes traffic, so writes are restricted to
+ * the panel owner. Reading it is harmless — the caller is already using it.
  */
-export async function GET() {
+
+export async function GET(request: NextRequest) {
     try {
-        // Validate session
-        const cookieStore = await cookies()
-        const sessionToken = cookieStore.get('session')?.value
-        if (!sessionToken) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-        const session = await validateSession(sessionToken)
-        if (!session) {
-            return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-        }
+        const session = await getSession(request)
+        if (!session) return unauthorized()
 
         const domainSetting = await prisma.panelSettings.findUnique({
             where: { key: 'panel_domain' },
@@ -39,22 +34,10 @@ export async function GET() {
     }
 }
 
-/**
- * PUT /api/settings/panel-domain
- * Set or update the panel domain
- */
 export async function PUT(request: NextRequest) {
     try {
-        // Validate session
-        const cookieStore = await cookies()
-        const sessionToken = cookieStore.get('session')?.value
-        if (!sessionToken) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-        const session = await validateSession(sessionToken)
-        if (!session) {
-            return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-        }
+        const auth = await requirePanelOwner(request)
+        if (auth.response) return auth.response
 
         const { domain } = await request.json()
 
@@ -62,31 +45,34 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Domain is required' }, { status: 400 })
         }
 
-        // Validate domain format
         const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-_.]*\.[a-zA-Z]{2,}$/
         if (!domainRegex.test(domain)) {
             return NextResponse.json({ error: 'Invalid domain format' }, { status: 400 })
         }
 
-        // Verify domain DNS points to this server
         const dnsValid = await verifyDomainDNS(domain)
 
-        // Save the domain setting
         await prisma.panelSettings.upsert({
             where: { key: 'panel_domain' },
             update: { value: domain },
             create: { key: 'panel_domain', value: domain },
         })
 
-        // Save the verification status
         await prisma.panelSettings.upsert({
             where: { key: 'panel_domain_verified' },
             update: { value: dnsValid.toString() },
             create: { key: 'panel_domain_verified', value: dnsValid.toString() },
         })
 
-        // Generate Traefik configuration for the panel
         await generatePanelTraefikConfig(domain)
+
+        await recordAudit({
+            action: 'settings.panel_domain',
+            actorId: auth.session.user.id,
+            actorEmail: auth.session.user.email,
+            targetType: 'panel',
+            metadata: { domain, dnsVerified: dnsValid },
+        })
 
         return NextResponse.json({
             success: true,
@@ -102,24 +88,11 @@ export async function PUT(request: NextRequest) {
     }
 }
 
-/**
- * DELETE /api/settings/panel-domain
- * Remove the panel domain
- */
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
     try {
-        // Validate session
-        const cookieStore = await cookies()
-        const sessionToken = cookieStore.get('session')?.value
-        if (!sessionToken) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-        const session = await validateSession(sessionToken)
-        if (!session) {
-            return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-        }
+        const auth = await requirePanelOwner(request)
+        if (auth.response) return auth.response
 
-        // Delete the settings
         await prisma.panelSettings.deleteMany({
             where: {
                 key: {
@@ -128,9 +101,15 @@ export async function DELETE() {
             },
         })
 
-        // Remove Traefik configuration
         const { removePanelTraefikConfig } = await import('@/lib/traefik')
         await removePanelTraefikConfig()
+
+        await recordAudit({
+            action: 'settings.panel_domain_removed',
+            actorId: auth.session.user.id,
+            actorEmail: auth.session.user.email,
+            targetType: 'panel',
+        })
 
         return NextResponse.json({
             success: true,

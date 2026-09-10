@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateSession } from '@/lib/auth'
 import { updateProjectEnvVars } from '@/lib/project'
 import { prisma } from '@/lib/db'
+import { recordAudit, requireProjectPermission } from '@/lib/access'
 
 interface RouteContext {
   params: Promise<{
@@ -9,32 +9,23 @@ interface RouteContext {
   }>
 }
 
+/**
+ * Environment variables, which include the project's API keys.
+ *
+ * Reading them is `env:read` — a distinct permission precisely because it
+ * exposes secrets: a viewer can inspect a project without being able to drain
+ * its service-role key.
+ */
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const { id } = await params
   try {
-    const sessionToken = request.cookies.get('session')?.value
-    
-    if (!sessionToken) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const auth = await requireProjectPermission(request, id, 'env:read')
+    if (auth.response) return auth.response
 
-    const session = await validateSession(sessionToken)
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Invalid session' },
-        { status: 401 }
-      )
-    }
-
-    // Fetch project environment variables from database
     const envVars = await prisma.projectEnvVar.findMany({
       where: { projectId: id }
     })
 
-    // Convert to object format
     const envVarsObject: Record<string, string> = {}
     envVars.forEach(envVar => {
       envVarsObject[envVar.key] = envVar.value
@@ -53,22 +44,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 export async function POST(request: NextRequest, { params }: RouteContext) {
   const { id } = await params
   try {
-    const sessionToken = request.cookies.get('session')?.value
-    
-    if (!sessionToken) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const session = await validateSession(sessionToken)
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Invalid session' },
-        { status: 401 }
-      )
-    }
+    const auth = await requireProjectPermission(request, id, 'env:write')
+    if (auth.response) return auth.response
 
     const envVars = await request.json()
 
@@ -87,6 +64,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         { status: 500 }
       )
     }
+
+    await recordAudit({
+      // Names only — never the values.
+      action: 'project.env_write',
+      organizationId: auth.project.organizationId,
+      actorId: auth.session.user.id,
+      actorEmail: auth.session.user.email,
+      targetType: 'project',
+      targetId: id,
+      metadata: { keys: Object.keys(envVars) },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

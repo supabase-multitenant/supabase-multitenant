@@ -1,25 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateSession } from '@/lib/auth'
 import { initializeSupabaseCore } from '@/lib/project'
+import { recordAudit, requirePanelOwner } from '@/lib/access'
 
+/**
+ * Bootstrap the shared Supabase core on this host.
+ *
+ * A machine-level operation, not an organization one: restricted to the panel
+ * owner rather than any authenticated user.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const sessionToken = request.cookies.get('session')?.value
-    
-    if (!sessionToken) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const session = await validateSession(sessionToken)
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Invalid session' },
-        { status: 401 }
-      )
-    }
+    const auth = await requirePanelOwner(request)
+    if (auth.response) return auth.response
 
     const result = await initializeSupabaseCore()
 
@@ -29,6 +21,13 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    await recordAudit({
+      action: 'system.initialize_core',
+      actorId: auth.session.user.id,
+      actorEmail: auth.session.user.email,
+      targetType: 'system',
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

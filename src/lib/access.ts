@@ -153,6 +153,29 @@ export async function requireProjectPermission(
 }
 
 /**
+ * Panel-wide guard.
+ *
+ * Some settings are not scoped to an organization at all — the panel's own
+ * domain changes how the host routes traffic, and bootstrapping the Supabase
+ * core touches the machine itself. Those belong to the panel owner
+ * (`User.role === 'owner'`), not to whoever administers one organization.
+ */
+export async function requirePanelOwner(
+  request: NextRequest
+): Promise<{ session: NonNullable<Session>; response?: never } | AccessFailure> {
+  const session = await getSession(request)
+  if (!session) return { response: unauthorized() }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true },
+  })
+  if (user?.role !== 'owner') return { response: forbidden('system:manage') }
+
+  return { session }
+}
+
+/**
  * Append to the audit trail. Best-effort: a logging failure must never break the
  * request that triggered it.
  */
@@ -189,4 +212,22 @@ export async function listAudit(organizationId: string, limit = 50) {
     orderBy: { createdAt: 'desc' },
     take: Math.min(limit, 200),
   })
+}
+
+/**
+ * Organizations a user belongs to, in any capacity.
+ *
+ * Used to scope list endpoints: a request should only ever return rows the
+ * caller can actually see, rather than relying on the UI to hide them.
+ */
+export async function listAccessibleOrganizationIds(userId: string): Promise<string[]> {
+  const [owned, memberships] = await Promise.all([
+    prisma.organization.findMany({ where: { ownerId: userId }, select: { id: true } }),
+    prisma.organizationMember.findMany({
+      where: { userId },
+      select: { organizationId: true },
+    }),
+  ])
+
+  return [...new Set([...owned.map((o) => o.id), ...memberships.map((m) => m.organizationId)])]
 }
