@@ -108,8 +108,35 @@ model Project {
 
   // Relations
   envVars     ProjectEnvVar[]
+  backups     ProjectBackup[]
 
   @@map("projects")
+}
+
+// ---------------------------------------------------------------------------
+// Project backups — the durability story and the restore/rollback primitive
+// used both for disaster recovery and for the cloud -> self-hosted migration.
+// ---------------------------------------------------------------------------
+
+model ProjectBackup {
+  id             String    @id @default(uuid())
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  kind           String    @default("database") // database | storage
+  status         String    @default("running")  // running | completed | failed
+  fileName       String
+  filePath       String
+  sizeBytes      BigInt?
+  sha256         String?
+  error          String?
+  restoreCount   Int       @default(0)
+  lastRestoredAt DateTime?
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@index([projectId, createdAt])
+  @@map("project_backups")
 }
 
 // ---------------------------------------------------------------------------

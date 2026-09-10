@@ -84,3 +84,27 @@ export function getCoreBasePath(): string {
   }
   return path.join(process.cwd(), 'supabase-core')
 }
+
+/**
+ * Base directory for project backups (`<slug>/` per project).
+ *
+ * Deliberately outside `projects/`: backups must survive a project being deleted
+ * or re-provisioned, and they are the restore source for a *new* project.
+ */
+export function getBackupsBasePath(): string {
+  const mode = getMode()
+  if (mode === 'production') {
+    const dataPath = process.env[ENV_DATA_PATH] || DEFAULT_DATA_DIR
+    return path.join(dataPath, 'backups')
+  }
+  return path.join(process.cwd(), 'backups')
+}
+
+/**
+ * Directory holding the on-disk volume data for a project, as mounted by its
+ * compose file. Used for file-level backups (e.g. the storage bucket volume)
+ * without needing to exec into a container.
+ */
+export function getProjectVolumesPath(slug: string): string {
+  return path.join(getProjectsBasePath(), slug, 'docker', 'volumes')
+}
