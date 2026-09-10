@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { signIn } from 'next-auth/react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,19 +55,23 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+      // Auth.js credentials sign-in (engine in src/auth.ts).
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
       })
 
-      if (response.ok) {
-        router.push('/dashboard')
+      if (result?.error) {
+        setError('Invalid email or password')
       } else {
-        const data = await response.json()
-        setError(data.error || 'Login failed')
+        // Return to the page the middleware bounced us from, if any.
+        const next =
+          typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('next')
+            : null
+        router.push(next && next.startsWith('/') ? next : '/dashboard')
+        router.refresh()
       }
     } catch {
       setError('An error occurred. Please try again.')

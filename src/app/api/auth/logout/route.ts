@@ -1,23 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { deleteSession } from '@/lib/auth'
+import { NextResponse } from 'next/server'
+import { signOut } from '@/auth'
 
-export async function POST(request: NextRequest) {
+/**
+ * Sign out via Auth.js. Clears the `session` cookie (JWT strategy) and removes
+ * any adapter session row when present.
+ */
+export async function POST() {
   try {
-    const sessionToken = request.cookies.get('session')?.value
-
-    if (sessionToken) {
-      await deleteSession(sessionToken)
-    }
-
+    await signOut({ redirect: false })
     const response = NextResponse.json({ success: true })
     response.cookies.delete('session')
-
     return response
   } catch (error) {
     console.error('Logout error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    const response = NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    response.cookies.delete('session')
+    return response
   }
 }

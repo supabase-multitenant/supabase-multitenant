@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { signIn } from 'next-auth/react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
@@ -86,7 +87,14 @@ export default function RegisterPage() {
       })
 
       if (response.ok) {
-        router.push('/dashboard')
+        // Account created (owner). Establish the Auth.js session, then continue.
+        const result = await signIn('credentials', { email, password, redirect: false })
+        if (result?.error) {
+          router.push('/auth/login')
+        } else {
+          router.push('/dashboard')
+          router.refresh()
+        }
       } else {
         const data = await response.json()
         setError(data.error || 'Registration failed')
