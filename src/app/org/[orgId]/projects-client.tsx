@@ -164,7 +164,10 @@ export function OrgProjects({
                   className="rounded-lg border border-border bg-surface p-4 transition-colors hover:border-brand/50 hover:bg-surface-2"
                 >
                   <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">AWS · {p.region}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {/* These run on our own host, not in a cloud region. */}
+                    Self-hosted{p.region ? ` · ${p.region}` : ''}
+                  </p>
                   <p className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
