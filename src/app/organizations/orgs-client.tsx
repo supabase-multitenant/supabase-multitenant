@@ -17,7 +17,6 @@ import { Field, Select } from '@/components/form-controls'
 export type OrgRow = {
   id: string
   name: string
-  plan: string
   type: string
   projectCount: number
   memberCount: number
@@ -63,7 +62,6 @@ export function OrgsClient({ initial }: { initial: OrgRow[] }) {
         {
           id: data.organization.id,
           name: data.organization.name,
-          plan: data.organization.plan,
           type: data.organization.type,
           projectCount: 0,
           // The creator is the owner, so a new organization has one member.

@@ -28,7 +28,6 @@ export default async function OrganizationsPage() {
         initial={organizations.map((o) => ({
           id: o.id,
           name: o.name,
-          plan: o.plan,
           type: o.type,
           projectCount: o._count.projects,
           // The org owner is not a membership row, so count them too.
