@@ -158,8 +158,42 @@ model Organization {
   members  OrganizationMember[]
   projects Project[]
   customRoles CustomRole[]
+  invitations Invitation[]
 
   @@map("organizations")
+}
+
+/**
+ * An invitation to join an organization.
+ *
+ * The raw token is never stored — only its hash — so a database leak cannot be
+ * replayed to gain access. The link is shown once, to the person creating it.
+ */
+model Invitation {
+  id String @id @default(uuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  email         String
+  role          String  @default("viewer")
+  customRoleId  String?
+  customRole    CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+
+  // sha256 of the token; the token itself lives only in the invite link.
+  tokenHash String @unique
+  status    String @default("pending") // pending | accepted | revoked
+
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  acceptedByUserId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, status])
+  @@index([email])
+  @@map("invitations")
 }
 
 /**
@@ -181,6 +215,7 @@ model CustomRole {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   members OrganizationMember[]
+  invitations Invitation[]
 
   @@unique([organizationId, name])
   @@map("custom_roles")

@@ -29,6 +29,16 @@ type CustomRole = {
 
 type AssignableRole = { value: string; label: string; description: string }
 
+type Invitation = {
+  id: string
+  email: string
+  role: string
+  customRole: { id: string; name: string } | null
+  state: string
+  expiresAt: string
+  createdAt: string
+}
+
 const ROLE_TONE: Record<string, string> = {
   owner: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
   admin: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
@@ -49,6 +59,8 @@ export function TeamClient({
   const [members, setMembers] = useState<Member[]>([])
   const [owner, setOwner] = useState<Member | null>(null)
   const [roles, setRoles] = useState<CustomRole[]>([])
+  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
   const [assignable, setAssignable] = useState<AssignableRole[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -73,9 +85,10 @@ export function TeamClient({
     setLoading(true)
     setError(null)
     try {
-      const [mRes, rRes] = await Promise.all([
+      const [mRes, rRes, iRes] = await Promise.all([
         fetch(`/api/organizations/${org.id}/members`, { cache: 'no-store' }),
         fetch(`/api/organizations/${org.id}/roles`, { cache: 'no-store' }),
+        fetch(`/api/organizations/${org.id}/invitations`, { cache: 'no-store' }),
       ])
       const mJson = await mRes.json()
       const rJson = await rRes.json()
@@ -84,6 +97,7 @@ export function TeamClient({
       setOwner(mJson.owner ?? null)
       setAssignable(mJson.assignableRoles ?? [])
       if (rRes.ok) setRoles(rJson.roles ?? [])
+      if (iRes.ok) setInvitations((await iRes.json()).invitations ?? [])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.')
     } finally {
@@ -152,23 +166,43 @@ export function TeamClient({
     }
   }
 
-  async function addMember() {
+  async function inviteByEmail() {
     if (!email.trim()) return
     setBusy('add')
     setError(null)
+    setInviteLink(null)
     try {
-      const res = await fetch(`/api/organizations/${org.id}/members`, {
+      const res = await fetch(`/api/organizations/${org.id}/invitations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim(), role: newRole }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.hint ? `${json.error} ${json.hint}` : json.error)
-      setNotice(`${email.trim()} added as ${newRole}.`)
+      if (!res.ok) throw new Error(json.detail ? `${json.error} ${json.detail}` : json.error)
+      setInviteLink(json.inviteUrl)
+      setNotice(`Invitation created for ${email.trim()}. Send them the link below.`)
       setEmail('')
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not add the member.')
+      setError(e instanceof Error ? e.message : 'Could not create the invitation.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function revokeInvite(invitation: Invitation) {
+    setBusy(invitation.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/organizations/${org.id}/invitations/${invitation.id}`, {
+        method: 'DELETE',
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setNotice(`Invitation for ${invitation.email} revoked.`)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not revoke the invitation.')
     } finally {
       setBusy(null)
     }
@@ -395,17 +429,76 @@ export function TeamClient({
               </select>
             </label>
             <button
-              onClick={() => void addMember()}
+              onClick={() => void inviteByEmail()}
               disabled={busy === 'add' || !email.trim()}
               className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
             >
               {busy === 'add' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-              Add member
+              Create invitation
             </button>
             <p className="w-full text-xs text-muted-foreground">
-              The person needs an account already. Invitation links for new people are not built yet.
+              Works for anyone — they do not need an account yet. They register or sign in with this
+              address, then the link adds them. Links work once and expire in 7 days.
             </p>
+
+            {inviteLink && (
+              <div className="w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3">
+                <p className="mb-1.5 text-xs font-medium text-emerald-300">
+                  Invitation link — copy it now, it is shown once
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={inviteLink}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-foreground"
+                  />
+                  <button
+                    onClick={() => void navigator.clipboard.writeText(inviteLink)}
+                    className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-accent"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
           </footer>
+        )}
+
+        {invitations.filter((i) => i.state === 'pending').length > 0 && (
+          <div className="border-t border-border px-5 py-4">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Pending invitations
+            </h3>
+            <div className="space-y-2">
+              {invitations
+                .filter((i) => i.state === 'pending')
+                .map((invitation) => (
+                  <div
+                    key={invitation.id}
+                    className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm text-foreground">{invitation.email}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {invitation.customRole?.name ?? invitation.role} · expires{' '}
+                        {new Date(invitation.expiresAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    {allowed('member:invite') && (
+                      <button
+                        onClick={() => void revokeInvite(invitation)}
+                        disabled={busy === invitation.id}
+                        className="rounded-md border border-border p-1.5 text-muted-foreground hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
+                        title="Revoke invitation"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
         )}
       </section>
 
