@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadAccessibleProject } from '@/lib/api-auth'
+import { requireProjectPermission } from '@/lib/access'
 import {
   BACKUP_KINDS,
   DEFAULT_RETENTION,
@@ -18,7 +18,7 @@ interface RouteContext {
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const { id } = await params
   try {
-    const access = await loadAccessibleProject(request, id)
+    const access = await requireProjectPermission(request, id, 'backup:read')
     if (access.response) return access.response
 
     const [backups, footprint] = await Promise.all([
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 export async function POST(request: NextRequest, { params }: RouteContext) {
   const { id } = await params
   try {
-    const access = await loadAccessibleProject(request, id)
+    const access = await requireProjectPermission(request, id, 'backup:create')
     if (access.response) return access.response
 
     const body = await request.json().catch(() => ({}))

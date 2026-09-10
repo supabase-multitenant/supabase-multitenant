@@ -157,13 +157,38 @@ model Organization {
 
   members  OrganizationMember[]
   projects Project[]
+  customRoles CustomRole[]
 
   @@map("organizations")
 }
 
+/**
+ * An administrator-defined role: a named bundle of permissions.
+ *
+ * A member with a custom role has exactly these permissions — the built-in role
+ * is ignored (see resolveEffectivePermissions). That lets an admin express
+ * "developer, but without secrets access", which additive bundles could not.
+ */
+model CustomRole {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  permissions String[] // Permission catalog keys
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  members OrganizationMember[]
+
+  @@unique([organizationId, name])
+  @@map("custom_roles")
+}
+
 model OrganizationMember {
   id        String   @id @default(uuid())
-  role      String   @default("member") // owner | admin | member
+  role      String   @default("viewer") // viewer | developer | admin | owner | member (legacy)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -172,8 +197,31 @@ model OrganizationMember {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // When set, this member's access is exactly the custom role's permissions.
+  customRoleId String?
+  customRole   CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+
   @@unique([organizationId, userId])
   @@map("organization_members")
+}
+
+/**
+ * Who did what. Access-control changes in particular must be attributable.
+ */
+model AuditLog {
+  id             String   @id @default(uuid())
+  action         String   // e.g. member.invite, role.update, project.delete
+  organizationId String?
+  actorId        String?
+  actorEmail     String?
+  targetType     String?
+  targetId       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
 }
 
 model ProjectEnvVar {

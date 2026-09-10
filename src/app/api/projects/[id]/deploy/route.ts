@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateSession } from '@/lib/auth'
 import { deployProject } from '@/lib/project'
+import { recordAudit, requireProjectPermission } from '@/lib/access'
 
 interface RouteContext {
   params: Promise<{
@@ -11,22 +11,9 @@ interface RouteContext {
 export async function POST(request: NextRequest, { params }: RouteContext) {
   const { id } = await params
   try {
-    const sessionToken = request.cookies.get('session')?.value
-    
-    if (!sessionToken) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const session = await validateSession(sessionToken)
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Invalid session' },
-        { status: 401 }
-      )
-    }
+    // `project:deploy` — a developer can deploy; a viewer cannot.
+    const auth = await requireProjectPermission(request, id, 'project:deploy')
+    if (auth.response) return auth.response
 
     const result = await deployProject(id)
 
@@ -36,6 +23,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         { status: 500 }
       )
     }
+
+    await recordAudit({
+      action: 'project.deploy',
+      organizationId: auth.project.organizationId,
+      actorId: auth.session.user.id,
+      actorEmail: auth.session.user.email,
+      targetType: 'project',
+      targetId: id,
+      metadata: { slug: auth.project.slug },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

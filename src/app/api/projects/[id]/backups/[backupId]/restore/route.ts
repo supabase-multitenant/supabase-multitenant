@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadAccessibleProject } from '@/lib/api-auth'
+import { requireProjectPermission } from '@/lib/access'
 import { getBackup, restoreDatabaseBackup, serializeBackup } from '@/lib/backup'
 
 interface RouteContext {
@@ -17,7 +17,7 @@ interface RouteContext {
 export async function POST(request: NextRequest, { params }: RouteContext) {
   const { id, backupId } = await params
   try {
-    const access = await loadAccessibleProject(request, id)
+    const access = await requireProjectPermission(request, id, 'backup:restore')
     if (access.response) return access.response
 
     const body = await request.json().catch(() => ({}))
@@ -35,8 +35,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       )
     }
 
-    // The caller must also be allowed to touch the target.
-    const targetAccess = await loadAccessibleProject(request, targetProjectId)
+    // The caller must also be allowed to restore into the target.
+    const targetAccess = await requireProjectPermission(request, targetProjectId, 'backup:restore')
     if (targetAccess.response) return targetAccess.response
 
     const result = await restoreDatabaseBackup(

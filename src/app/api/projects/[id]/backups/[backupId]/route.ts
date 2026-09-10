@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadAccessibleProject } from '@/lib/api-auth'
+import { requireProjectPermission } from '@/lib/access'
 import { deleteBackup, serializeBackup, getBackup } from '@/lib/backup'
 
 interface RouteContext {
@@ -9,7 +9,7 @@ interface RouteContext {
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const { id, backupId } = await params
   try {
-    const access = await loadAccessibleProject(request, id)
+    const access = await requireProjectPermission(request, id, 'backup:read')
     if (access.response) return access.response
 
     const backup = await getBackup(backupId, id)
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { id, backupId } = await params
   try {
-    const access = await loadAccessibleProject(request, id)
+    const access = await requireProjectPermission(request, id, 'backup:delete')
     if (access.response) return access.response
 
     const removed = await deleteBackup(backupId, id)

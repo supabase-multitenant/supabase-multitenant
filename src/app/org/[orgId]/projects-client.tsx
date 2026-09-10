@@ -106,18 +106,30 @@ export function OrgProjects({
     <div className="flex">
       <aside className="hidden w-56 shrink-0 border-r border-border bg-surface p-3 md:block">
         <nav className="space-y-1">
-          {sidebar.map((item) => (
-            <span
-              key={item.label}
-              className={`flex cursor-default items-center gap-2.5 rounded-md px-3 py-2 text-sm ${
-                item.active
-                  ? 'bg-accent text-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-              }`}
-            >
-              <item.icon className="h-4 w-4" /> {item.label}
-            </span>
-          ))}
+          {sidebar.map((item) => {
+            // Only entries that have a real page become links; the rest stay
+            // as the mockup's placeholder text.
+            const href =
+              item.label === 'Projects'
+                ? `/org/${org.id}`
+                : item.label === 'Team'
+                  ? `/org/${org.id}/team`
+                  : undefined
+            const className = `flex items-center gap-2.5 rounded-md px-3 py-2 text-sm ${
+              item.active
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            }`
+            return href ? (
+              <Link key={item.label} href={href} className={className}>
+                <item.icon className="h-4 w-4" /> {item.label}
+              </Link>
+            ) : (
+              <span key={item.label} className={`${className} cursor-default`}>
+                <item.icon className="h-4 w-4" /> {item.label}
+              </span>
+            )
+          })}
         </nav>
       </aside>
 
