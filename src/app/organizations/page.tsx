@@ -18,7 +18,7 @@ export default async function OrganizationsPage() {
   const organizations = await prisma.organization.findMany({
     where: { OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }] },
     orderBy: { createdAt: 'asc' },
-    include: { _count: { select: { projects: true } } },
+    include: { _count: { select: { projects: true, members: true } } },
   })
 
   return (
@@ -31,6 +31,8 @@ export default async function OrganizationsPage() {
           plan: o.plan,
           type: o.type,
           projectCount: o._count.projects,
+          // The org owner is not a membership row, so count them too.
+          memberCount: o._count.members + 1,
         }))}
       />
     </div>

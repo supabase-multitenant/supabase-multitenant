@@ -32,8 +32,34 @@ Not allowed:
 - Porting their SQL migrations, schema DDL, or component markup.
 - Lifting their naming wholesale (a whole table of their identifiers is a tell).
 
-Practically: read it, close it, describe the requirement in our own words in the issue, then
-implement against that description. If a diff would look familiar side by side, rewrite it.
+### The procedure (do this every time)
+
+1. **Read to understand, then close the file.** Never edit with their code on screen.
+2. **Write the requirement in our own words first** — in the issue or a comment — as behaviour:
+   "an invitation is single-use and bound to one email address". No mention of their tables,
+   columns or functions.
+3. **Design from that description**, using our own structures, names and helpers. If our existing
+   code already has a principle that fits (e.g. our anti-escalation rule), reuse *ours*.
+4. **Check by diff instinct:** if our file and theirs could be placed side by side and look like
+   relatives, rewrite ours. Same shape is fine when the shape is generic; same *expression* is not.
+5. **Never copy SQL.** Migrations and DDL are the highest-risk artifacts — they are pure
+   expression. Write our own schema for our own requirements.
+
+### Standing rule for the database-enforcement work
+
+When we move authorization down into the database, work from the **requirement** — "a bug in a
+route handler must not be able to leak another organization's rows" — and design our own policies.
+Do **not** open their migrations as a reference while writing ours. Concepts yes; SQL no.
+
+### Applied so far
+
+- **Roles/permissions**: our own — a 25-entry permission catalog with a custom-role resolver and
+  an anti-escalation rule, written before MakerKit was introduced. Nothing taken.
+- **Invitations**: our own design from the requirement — sha256-hashed token, single-use,
+  email-bound, superseding revokes the previous link, expiry, revoking on reuse. Their
+  implementation was never read; their file *names* were seen in a directory listing only.
+- **Team UI**: written against our API and our components.
+- **Not yet used**: their SQL, their components, their migration structure.
 
 ## Inventory — what they have that we want
 

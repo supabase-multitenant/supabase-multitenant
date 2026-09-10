@@ -20,6 +20,12 @@ export type OrgRow = {
   plan: string
   type: string
   projectCount: number
+  memberCount: number
+}
+
+/** "1 project" / "3 projects" — counts are read, so they must read correctly. */
+function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`
 }
 
 export function OrgsClient({ initial }: { initial: OrgRow[] }) {
@@ -29,7 +35,6 @@ export function OrgsClient({ initial }: { initial: OrgRow[] }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [type, setType] = useState('Personal')
-  const [plan, setPlan] = useState('Free')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -46,7 +51,7 @@ export function OrgsClient({ initial }: { initial: OrgRow[] }) {
       const res = await fetch('/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), type, plan }),
+        body: JSON.stringify({ name: name.trim(), type }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -61,10 +66,11 @@ export function OrgsClient({ initial }: { initial: OrgRow[] }) {
           plan: data.organization.plan,
           type: data.organization.type,
           projectCount: 0,
+          // The creator is the owner, so a new organization has one member.
+          memberCount: 1,
         },
       ])
       setName('')
-      setPlan('Free')
       setType('Personal')
       setOpen(false)
       router.refresh()
@@ -110,7 +116,8 @@ export function OrgsClient({ initial }: { initial: OrgRow[] }) {
               <span>
                 <span className="block text-sm font-medium text-foreground">{org.name}</span>
                 <span className="block text-xs text-muted-foreground">
-                  {org.plan} plan · {org.projectCount} projects · {org.type}
+                  {plural(org.projectCount, 'project')} · {plural(org.memberCount, 'member')} ·{' '}
+                  {org.type}
                 </span>
               </span>
             </Link>
@@ -149,21 +156,14 @@ export function OrgsClient({ initial }: { initial: OrgRow[] }) {
                 className="w-full rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/25"
               />
             </Field>
-            <Field label="Type" hint="What best describes your organization?">
+            <Field
+              label="Type"
+              hint="What best describes your organization? Displayed on the organization card."
+            >
               <Select
                 value={type}
                 onChange={setType}
                 options={['Personal', 'Company', 'Educational', 'Agency']}
-              />
-            </Field>
-            <Field label="Plan" hint="Which plan fits your organization's needs best?">
-              <Select
-                value={plan}
-                onChange={setPlan}
-                options={['Free', 'Pro', 'Team']}
-                render={(v) =>
-                  v === 'Free' ? 'Free — $0/month' : v === 'Pro' ? 'Pro — $25/month' : 'Team — $599/month'
-                }
               />
             </Field>
           </div>

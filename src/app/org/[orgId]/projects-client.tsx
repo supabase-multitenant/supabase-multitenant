@@ -41,9 +41,11 @@ function statusLabel(status: string) {
 
 export function OrgProjects({
   org,
+  memberCount,
   initial,
 }: {
-  org: { id: string; name: string; plan: string }
+  org: { id: string; name: string }
+  memberCount: number
   initial: ProjectRow[]
 }) {
   const router = useRouter()
@@ -193,33 +195,27 @@ export function OrgProjects({
           </div>
 
           <aside>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">{org.plan} plan usage</p>
-                <p className="text-xs text-muted-foreground">Current billing cycle</p>
-              </div>
-              <span className="cursor-default rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground">
-                Upgrade
-              </span>
+            <div>
+              <p className="text-sm font-medium text-foreground">This organization</p>
+              <p className="text-xs text-muted-foreground">Live counts, no quotas — it runs on your own host</p>
             </div>
-            <ul className="mt-5 space-y-4">
+            <ul className="mt-5 space-y-3">
               {[
-                { label: 'Projects', value: `${projects.length} / ${org.plan === 'Free' ? 2 : '∞'}` },
-                { label: 'Database size', value: '— / 500 MB' },
-                { label: 'Monthly active users', value: '— / 50,000' },
-                { label: 'File storage', value: '— / 1 GB' },
+                { label: 'Projects', value: String(projects.length) },
+                { label: 'Members', value: String(memberCount) },
               ].map((u) => (
-                <li key={u.label}>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{u.label}</span>
-                    <span className="text-foreground">{u.value}</span>
-                  </div>
-                  <div className="mt-2 h-1 rounded-full bg-surface-2">
-                    <div className="h-1 rounded-full bg-brand" style={{ width: '8%' }} />
-                  </div>
+                <li key={u.label} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{u.label}</span>
+                  <span className="text-foreground">{u.value}</span>
                 </li>
               ))}
             </ul>
+            <Link
+              href={`/org/${org.id}/team`}
+              className="mt-5 inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent"
+            >
+              <Users className="h-3.5 w-3.5" /> Manage members &amp; roles
+            </Link>
           </aside>
         </div>
       </main>
@@ -239,9 +235,6 @@ export function OrgProjects({
             <Field label="Organization">
               <div className="flex items-center gap-2 rounded-md border border-input bg-surface px-3 py-2 text-sm text-foreground">
                 {org.name}
-                <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                  {org.plan}
-                </span>
               </div>
             </Field>
             <Field label="Git (optional)" hint="Push schema changes from your repository and we deploy them.">

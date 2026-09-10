@@ -13,7 +13,10 @@ export default async function OrgPage({ params }: { params: Promise<{ orgId: str
 
   const org = await prisma.organization.findFirst({
     where: { id: orgId, OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }] },
-    include: { projects: { orderBy: { createdAt: 'desc' } } },
+    include: {
+      projects: { orderBy: { createdAt: 'desc' } },
+      _count: { select: { members: true } },
+    },
   })
   if (!org) notFound()
 
@@ -22,12 +25,14 @@ export default async function OrgPage({ params }: { params: Promise<{ orgId: str
       <AppTopbar
         crumbs={[
           { label: 'Organizations', href: '/organizations' },
-          { label: org.name, badge: org.plan },
+          { label: org.name },
         ]}
         user={user}
       />
       <OrgProjects
-        org={{ id: org.id, name: org.name, plan: org.plan }}
+        org={{ id: org.id, name: org.name }}
+        // +1 for the owner, who is not a membership row.
+        memberCount={org._count.members + 1}
         initial={org.projects.map((p) => ({
           id: p.id,
           name: p.name,

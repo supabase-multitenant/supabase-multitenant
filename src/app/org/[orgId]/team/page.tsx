@@ -14,7 +14,7 @@ export default async function OrgTeamPage({ params }: { params: Promise<{ orgId:
 
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
-    select: { id: true, name: true, plan: true, ownerId: true },
+    select: { id: true, name: true, ownerId: true },
   })
   if (!org) notFound()
 
@@ -32,7 +32,7 @@ export default async function OrgTeamPage({ params }: { params: Promise<{ orgId:
         user={user}
       />
       <TeamClient
-        org={{ id: org.id, name: org.name, plan: org.plan }}
+        org={{ id: org.id, name: org.name }}
         viewerPermissions={access.permissions}
         viewerIsOwner={access.isOwner}
       />

@@ -52,7 +52,7 @@ export function TeamClient({
   viewerPermissions,
   viewerIsOwner,
 }: {
-  org: { id: string; name: string; plan: string }
+  org: { id: string; name: string }
   viewerPermissions: string[]
   viewerIsOwner: boolean
 }) {
