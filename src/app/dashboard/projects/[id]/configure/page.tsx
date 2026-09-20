@@ -123,6 +123,13 @@ export default function ConfigureProjectPage({ params }: ConfigureProjectPagePro
   const [domainError, setDomainError] = useState('')
   const [domainSuccess, setDomainSuccess] = useState('')
 
+  // Edge-function secrets: dynamic key/value pairs exposed only to this project's
+  // edge functions (separate from the infra env vars above).
+  const [functionSecrets, setFunctionSecrets] = useState<{ key: string; value: string }[]>([])
+  const [secretsLoading, setSecretsLoading] = useState(false)
+  const [secretsError, setSecretsError] = useState('')
+  const [secretsSuccess, setSecretsSuccess] = useState('')
+
   const router = useRouter()
 
   useEffect(() => {
@@ -179,6 +186,61 @@ export default function ConfigureProjectPage({ params }: ConfigureProjectPagePro
 
     loadDomain()
   }, [projectId])
+
+  // Load edge-function secrets when projectId is available
+  useEffect(() => {
+    if (!projectId) return
+
+    const loadFunctionSecrets = async () => {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/functions/env`)
+        if (response.ok) {
+          const data = await response.json()
+          const entries = Object.entries(data.envVars || {}).map(([key, value]) => ({
+            key,
+            value: value as string,
+          }))
+          setFunctionSecrets(entries)
+        }
+      } catch (error) {
+        console.error('Failed to load edge-function secrets:', error)
+      }
+    }
+
+    loadFunctionSecrets()
+  }, [projectId])
+
+  const handleSaveFunctionSecrets = async () => {
+    setSecretsLoading(true)
+    setSecretsError('')
+    setSecretsSuccess('')
+
+    // Collapse rows into a { KEY: value } object; skip rows without a key.
+    const payload: Record<string, string> = {}
+    for (const { key, value } of functionSecrets) {
+      const trimmed = key.trim()
+      if (trimmed) payload[trimmed] = value
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/functions/env`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (response.ok) {
+        setSecretsSuccess('Edge-function secrets saved. Redeploy the project to apply them.')
+      } else {
+        const data = await response.json()
+        setSecretsError(data.error || 'Failed to save edge-function secrets')
+      }
+    } catch {
+      setSecretsError('An error occurred. Please try again.')
+    } finally {
+      setSecretsLoading(false)
+    }
+  }
 
   const generateSecureKey = (length: number = 32) => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -967,6 +1029,93 @@ export default function ConfigureProjectPage({ params }: ConfigureProjectPagePro
                       value={envVars.FUNCTIONS_VERIFY_JWT}
                       onChange={createInputHandler('FUNCTIONS_VERIFY_JWT')}
                     />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Edge Function Secrets Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle>⚡ Edge Function Secrets</CardTitle>
+                <CardDescription>
+                  Secrets exposed only to this project&apos;s edge functions via <code>Deno.env.get()</code>.
+                  They are isolated from other projects and kept separate from the infrastructure
+                  variables above. Redeploy the project after saving to apply changes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {secretsSuccess && (
+                    <div className="bg-green-500/10 border border-green-500/20 text-green-500 px-4 py-3 rounded text-sm">
+                      {secretsSuccess}
+                    </div>
+                  )}
+                  {secretsError && (
+                    <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded text-sm">
+                      {secretsError}
+                    </div>
+                  )}
+
+                  {functionSecrets.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No edge-function secrets yet.</p>
+                  )}
+
+                  {functionSecrets.map((secret, index) => (
+                    <div key={index} className="flex gap-2 items-start">
+                      <div className="flex-1 space-y-1">
+                        <Input
+                          type="text"
+                          placeholder="SECRET_NAME"
+                          value={secret.key}
+                          onChange={(e) =>
+                            setFunctionSecrets((prev) =>
+                              prev.map((s, i) => (i === index ? { ...s, key: e.target.value } : s))
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <Input
+                          type="password"
+                          placeholder="value"
+                          value={secret.value}
+                          onChange={(e) =>
+                            setFunctionSecrets((prev) =>
+                              prev.map((s, i) => (i === index ? { ...s, value: e.target.value } : s))
+                            )
+                          }
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() =>
+                          setFunctionSecrets((prev) => prev.filter((_, i) => i !== index))
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        setFunctionSecrets((prev) => [...prev, { key: '', value: '' }])
+                      }
+                    >
+                      Add Secret
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSaveFunctionSecrets}
+                      disabled={secretsLoading}
+                    >
+                      {secretsLoading ? 'Saving...' : 'Save Secrets'}
+                    </Button>
                   </div>
                 </div>
               </CardContent>
