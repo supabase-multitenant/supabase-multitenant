@@ -12,10 +12,12 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Pause,
   Play,
   RotateCcw,
   Save,
   Settings,
+  Trash2,
   ShieldCheck,
   Users,
 } from 'lucide-react'
@@ -115,6 +117,65 @@ export function ProjectClient({
     }
   }
 
+  async function pause() {
+    setBusy('pause')
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(`/api/projects/${project.id}/pause`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Pause failed.')
+      setNotice('Paused. Containers stopped, all data kept — resume when you need it.')
+      router.refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Pause failed.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function resume() {
+    setBusy('resume')
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(`/api/projects/${project.id}/resume`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Resume failed.')
+      setNotice('Resumed. The existing containers were started, not rebuilt.')
+      router.refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Resume failed.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function nuke() {
+    const confirmation = window.prompt(
+      `This permanently deletes "${project.name}" — its containers, its volumes, its backups ` +
+        `and every row in its database. There is no undo.\n\nType the project name to confirm:`
+    )
+    if (confirmation === null) return
+    if (confirmation.trim() !== project.name) {
+      setError('Name did not match — nothing was deleted.')
+      return
+    }
+
+    setBusy('nuke')
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Delete failed.')
+      router.push(organization ? `/org/${organization.id}` : '/dashboard')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed.')
+      setBusy(null)
+    }
+  }
+
   async function backupNow() {
     setBusy('backup')
     setError(null)
@@ -202,14 +263,47 @@ export function ProjectClient({
               <Settings className="h-4 w-4" /> Configure
             </Link>
           )}
+          {can('project:deploy') && project.status !== 'paused' && (
+            <button
+              onClick={() => void pause()}
+              disabled={busy === 'pause'}
+              title="Stop the containers but keep every volume — resume any time"
+              className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            >
+              {busy === 'pause' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
+              Pause
+            </button>
+          )}
+          {can('project:deploy') && project.status === 'paused' && (
+            <button
+              onClick={() => void resume()}
+              disabled={busy === 'resume'}
+              title="Start the existing containers again — not a rebuild"
+              className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {busy === 'resume' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Resume
+            </button>
+          )}
           {can('project:deploy') && (
             <button
               onClick={() => void deploy()}
               disabled={busy === 'deploy'}
-              className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
             >
-              {busy === 'deploy' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              Deploy
+              {busy === 'deploy' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Redeploy
+            </button>
+          )}
+          {can('project:delete') && (
+            <button
+              onClick={() => void nuke()}
+              disabled={busy === 'nuke'}
+              title="Delete the project, its volumes, its backups and its data. Cannot be undone."
+              className="flex items-center gap-2 rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            >
+              {busy === 'nuke' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete
             </button>
           )}
         </div>

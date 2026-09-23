@@ -528,6 +528,45 @@ export async function pauseProject(projectId: string) {
   }
 }
 
+export async function resumeProject(projectId: string) {
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    })
+
+    if (!project) {
+      throw new Error('Project not found')
+    }
+
+    const projectDir = path.join(getProjectsBasePath(), project.slug, 'docker')
+
+    // `docker compose start`, not `up -d`. Pausing used `stop`, which leaves the containers (and
+    // so their volumes, networks and ports) in place, so resuming is a start of existing
+    // containers rather than a recreate — seconds instead of a redeploy. If a container was
+    // removed while paused, fall back to `up -d`.
+    try {
+      await execAsync('docker compose start', { cwd: projectDir })
+    } catch (startError) {
+      console.warn('compose start failed, falling back to up -d:', startError)
+      await execAsync('docker compose up -d --remove-orphans', {
+        cwd: projectDir,
+        timeout: 300000,
+        maxBuffer: 1024 * 1024 * 5,
+      })
+    }
+
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { status: 'active' },
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to resume project:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
 export async function deleteProject(projectId: string) {
   try {
     const project = await prisma.project.findUnique({
