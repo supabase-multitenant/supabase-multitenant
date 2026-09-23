@@ -12,6 +12,7 @@ import {
   findWildcardDomains,
   namespaceClusterRefs,
   restrictVirtualHostDomains,
+  retargetListener,
   substituteTenantSecrets,
   tenantClusterName,
 } from '@/lib/gateway'
@@ -22,7 +23,16 @@ import {
  * cluster names, and — importantly for the domain rewrite — further lists (`cors`,
  * `request_headers_to_add`) at other indents that must not be touched.
  */
-const LDS_FRAGMENT = `    - filters:
+const LDS_FRAGMENT = `resources:
+  - '@type': type.googleapis.com/envoy.config.listener.v3.Listener
+    name: supabase
+    per_connection_buffer_limit_bytes: 32768
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8000
+    filter_chains:
+    - filters:
         - name: envoy.filters.network.http_connection_manager
           typed_config:
             '@type': >-
@@ -246,6 +256,70 @@ describe('cluster references are namespaced per tenant', () => {
     expect(cds).toContain('port_value: 4000') // realtime
     expect(cds).toContain('port_value: 9000') // functions
     expect(cds).not.toMatch(/^\s*name:\s*auth\s*$/m)
+  })
+})
+
+describe('one listener per tenant, each on its own port', () => {
+  const gateway = buildSharedGateway(TENANTS, LDS_FRAGMENT, { basePort: 8100 })
+
+  it('assigns each tenant a distinct port', () => {
+    expect(gateway.ports[TENANTS[0].slug]).toBe(8100)
+    expect(gateway.ports[TENANTS[1].slug]).toBe(8101)
+    const assigned = Object.values(gateway.ports)
+    expect(new Set(assigned).size).toBe(assigned.length)
+  })
+
+  it('emits exactly one Listener resource per tenant — not one, and not one per fragment plus a stray', () => {
+    const listeners = (gateway.lds.match(/config\.listener\.v3\.Listener/g) ?? []).length
+    expect(listeners).toBe(TENANTS.length)
+  })
+
+  it('has exactly one resources: header even though every fragment carries its own', () => {
+    const headers = (gateway.lds.match(/^resources:\s*$/gm) ?? []).length
+    expect(headers).toBe(1)
+  })
+
+  it('binds each listener to a unique port, so envoy cannot reject duplicate addresses', () => {
+    const ports = [...gateway.lds.matchAll(/port_value:\s*(\d+)/g)].map((m) => m[1])
+    // every declared port belongs to a tenant, and none is the template default
+    for (const port of ports) {
+      expect(['8100', '8101']).toContain(port)
+    }
+    expect(ports).not.toContain('8000')
+  })
+
+  it('names the listeners per tenant rather than all "supabase"', () => {
+    expect(gateway.lds).toContain(`name: supabase-${TENANTS[0].slug}`)
+    expect(gateway.lds).toContain(`name: supabase-${TENANTS[1].slug}`)
+  })
+
+  it('keeps the whole filter chain per tenant, keys included', () => {
+    const segmentA = gateway.lds.slice(
+      gateway.lds.indexOf(`name: supabase-${TENANTS[0].slug}`),
+      gateway.lds.indexOf(`name: supabase-${TENANTS[1].slug}`)
+    )
+    expect(segmentA).toContain(TENANTS[0].secrets.anonKey)
+    expect(segmentA).not.toContain(TENANTS[1].secrets.anonKey)
+    // the JWT providers are per listener, which is exactly why they were not merged
+    expect(segmentA).toContain('jwt_authn')
+  })
+})
+
+describe('retargetListener', () => {
+  it('renames the listener and rebinds its port', () => {
+    const out = retargetListener(LDS_FRAGMENT, { name: 'supabase-x', port: 8123 })
+    expect(out).toContain('name: supabase-x')
+    expect(out).toContain('port_value: 8123')
+    expect(out).not.toContain('port_value: 8000')
+  })
+
+  it('rejects an invalid port instead of emitting an invalid config', () => {
+    expect(() => retargetListener(LDS_FRAGMENT, { name: 'x', port: 0 })).toThrow(
+      GatewayIsolationError
+    )
+    expect(() => retargetListener(LDS_FRAGMENT, { name: 'x', port: 70000 })).toThrow(
+      GatewayIsolationError
+    )
   })
 })
 

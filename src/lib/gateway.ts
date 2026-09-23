@@ -333,23 +333,97 @@ export function buildSharedClusters(tenants: TenantGatewayInput[]): string {
 }
 
 /**
- * Build the shared LDS: one listener, one virtual host per tenant, from the project template.
+ * Give a tenant's listener fragment its own name and port.
  *
- * The per-tenant fragment is derived from the *same* `lds.template.yaml` each project used, so
- * the shared gateway keeps the identical route set, filters and keys — only the domains and
- * cluster names change. Anything else would be a rewrite of a 1,200-line config with per-route
- * JWT/RBAC rules, which is exactly where an isolation bug would hide.
+ * The template names every listener `supabase` and binds it to 8000, which is correct for one
+ * project per envoy and impossible for several in one process — envoy rejects duplicate listener
+ * addresses. Each tenant therefore gets a distinct port inside the shared gateway; the router in
+ * front (Traefik) selects the tenant by host and targets that port.
+ */
+export function retargetListener(
+  fragment: string,
+  options: { name: string; port: number }
+): string {
+  if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535) {
+    throw new GatewayIsolationError(`Invalid listener port ${options.port}`, [String(options.port)])
+  }
+
+  const lines = fragment.split('\n')
+  let sawName = false
+  let sawPort = false
+
+  for (let i = 0; i < lines.length; i++) {
+    // The listener resource's own `name:` is the first one in the fragment, at the shallowest
+    // indent; route_config and virtual_host names come later and deeper.
+    if (!sawName && /^\s{4,8}name:\s*supabase\s*$/.test(lines[i])) {
+      lines[i] = lines[i].replace(/name:\s*supabase\s*$/, `name: ${options.name}`)
+      sawName = true
+      continue
+    }
+    if (!sawPort && /^\s{8,12}port_value:\s*8000\s*$/.test(lines[i])) {
+      // Only the listener's bind port — not any cluster endpoint port.
+      if (lines[i].includes('socket_address') || isBelowListenerAddress(lines, i)) {
+        lines[i] = lines[i].replace(/port_value:\s*8000\s*$/, `port_value: ${options.port}`)
+        sawPort = true
+      }
+    }
+  }
+
+  if (!sawName) {
+    throw new GatewayIsolationError(
+      `Could not find the listener name in a fragment — refusing to retarget it`,
+      [options.name]
+    )
+  }
+
+  return lines.join('\n')
+}
+
+/** Is this line inside the listener's own `address:` block rather than a cluster endpoint? */
+function isBelowListenerAddress(lines: string[], index: number): boolean {
+  for (let i = index - 1; i >= 0 && i > index - 12; i--) {
+    if (/^\s*address:\s*$/.test(lines[i])) return true
+    // A `routes:`/`clusters:`/`load_assignment:` section means we are past the listener header.
+    if (/^\s*(routes|load_assignment|endpoints|lb_endpoints):\s*$/.test(lines[i])) return false
+  }
+  return false
+}
+
+/**
+ * Build the shared LDS: one listener per tenant, each on its own port.
+ *
+ * ## Why per-tenant listeners rather than one merged listener
+ *
+ * The obvious "one listener, N virtual hosts" design is blocked by the template's own structure:
+ * the `jwt_authn` filter holds a single global provider set, and each provider carries a
+ * **per-tenant key** in its `local_jwks`. There is no per-virtual-host override for provider
+ * *keys* — only for which requirement a route asks for. Serving N tenants with N different keys
+ * from one listener would mean rewriting the 1,100-line JWT/RBAC filter block of the real
+ * template, which is precisely where an isolation bug would hide and never be noticed.
+ *
+ * Per-tenant listeners keep every tenant's filter chain byte-identical to the config that is
+ * known to work today, while still collapsing N gateway *containers* into one — which is the
+ * 93.8 MiB per project that ADR-0003 measured. The trade-off is explicit: we remove the duplicated
+ * container and its healthcheck/ports/config, not the per-tenant listener definition.
+ *
+ * Domains are still restricted per tenant even though each listener is port-scoped. That is
+ * deliberate defence in depth: it costs nothing, and if anyone ever merges these listeners the
+ * wildcard is the difference between isolation and a cross-tenant leak.
  */
 export function buildSharedListener(
   tenants: TenantGatewayInput[],
-  ldsFragmentTemplate: string
-): string {
+  ldsFragmentTemplate: string,
+  options: { basePort?: number } = {}
+): { lds: string; ports: Record<string, number> } {
   if (tenants.length === 0) {
     throw new GatewayIsolationError('Cannot build a shared listener with no tenants', [])
   }
 
-  const virtualHosts: string[] = []
-  for (const tenant of tenants) {
+  const basePort = options.basePort ?? 8000
+  const ports: Record<string, number> = {}
+  const listeners: string[] = []
+
+  tenants.forEach((tenant, index) => {
     // Keys first: the fragment's filters reference them, and an unresolved tenant placeholder in a
     // shared config is a cross-tenant auth failure.
     let fragment = substituteTenantSecrets(ldsFragmentTemplate, tenant.secrets)
@@ -383,31 +457,47 @@ export function buildSharedListener(
       )
     }
 
-    virtualHosts.push(fragment.trimEnd())
+    const port = basePort + index
+    ports[tenant.slug] = port
+    listeners.push(retargetListener(fragment.trimEnd(), { name: `supabase-${tenant.slug}`, port }))
+  })
+
+  // One `resources:` header for all listeners, not one per fragment.
+  const body = listeners
+    .map((listener) => listener.replace(/^\s*resources:\s*\n/, ''))
+    .join('\n')
+  const lds = `resources:\n${body}\n`
+
+  const assigned = Object.values(ports)
+  if (new Set(assigned).size !== assigned.length) {
+    throw new GatewayIsolationError('Two tenants were assigned the same listener port', [
+      ...assigned.map(String),
+    ])
   }
 
-  const listener = `resources:\n  - '@type': type.googleapis.com/envoy.config.listener.v3.Listener\n${virtualHosts.join('\n')}\n`
-
-  const leaks = findCrossTenantSecretLeaks(listener, tenants)
+  const leaks = findCrossTenantSecretLeaks(lds, tenants)
   if (leaks.length > 0) {
     throw new GatewayIsolationError(
-      'A tenant\'s credentials appear inside another tenant\'s virtual host',
+      "A tenant's credentials appear inside another tenant's virtual host",
       leaks.map((l) => `${l.tenant} exposes ${l.leaks.join(', ')}`)
     )
   }
 
-  return listener
+  return { lds, ports }
 }
 
 /** Both halves of the shared gateway config, ready to be written next to each other. */
 export interface SharedGatewayConfig {
   cds: string
   lds: string
+  /** tenant slug -> the port its listener accepts on, for the router in front to target. */
+  ports: Record<string, number>
 }
 
 export function buildSharedGateway(
   tenants: TenantGatewayInput[],
-  ldsFragmentTemplate: string
+  ldsFragmentTemplate: string,
+  options: { basePort?: number } = {}
 ): SharedGatewayConfig {
   const slugs = new Set<string>()
   for (const tenant of tenants) {
@@ -420,12 +510,14 @@ export function buildSharedGateway(
   }
 
   const cds = buildSharedClusters(tenants)
-  const lds = buildSharedListener(tenants, ldsFragmentTemplate)
+  const { lds, ports } = buildSharedListener(tenants, ldsFragmentTemplate, options)
 
   // Belt and braces on the assembled document, not just the fragments.
   const strayInLds = [...slugs].flatMap((slug) => findClusterRefsNotOwnedBy(lds, slug))
   const cdsClusters = [...cds.matchAll(/^\s*name:\s*(\S+)$/gm)].map((m) => m[1])
-  const unnamespacedClusters = cdsClusters.filter((name) => ![...slugs].some((s) => name.startsWith(`${s}-`)))
+  const unnamespacedClusters = cdsClusters.filter(
+    (name) => ![...slugs].some((s) => name.startsWith(`${s}-`))
+  )
 
   if (unnamespacedClusters.length > 0) {
     throw new GatewayIsolationError(
@@ -434,7 +526,7 @@ export function buildSharedGateway(
     )
   }
 
-  return { cds, lds }
+  return { cds, lds, ports }
 }
 
 function escapeRegExp(value: string): string {
