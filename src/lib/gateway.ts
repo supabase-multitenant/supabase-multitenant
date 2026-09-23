@@ -294,8 +294,22 @@ export function findClusterRefsNotOwnedBy(fragment: string, slug: string): strin
   return refs.filter((ref) => !ref.startsWith(`${slug}-`))
 }
 
-/** A CDS cluster definition for one tenant service. */
-export function buildTenantCluster(slug: string, host: string, service: string, port: number): string {
+/**
+ * A CDS cluster definition for one tenant service.
+ *
+ * The `address` is the tenant's **namespaced network alias** (`<slug>-auth`), not the bare service
+ * name. This is required, not cosmetic: the shared gateway is attached to every tenant's network at
+ * once, and each of those networks defines `auth`, `rest`, `db`, … If the cluster addressed the
+ * bare name, Docker's embedded DNS would have several candidates and no rule for choosing between
+ * them — tenant A's request could be routed to tenant B's Auth. A `<slug>-` prefix is unique across
+ * all attached networks, so resolution is unambiguous.
+ */
+export function buildTenantCluster(
+  slug: string,
+  serviceHost: string,
+  service: string,
+  port: number
+): string {
   return [
     "    - '@type': type.googleapis.com/envoy.config.cluster.v3.Cluster",
     `      name: ${tenantClusterName(slug, service)}`,
@@ -310,23 +324,40 @@ export function buildTenantCluster(slug: string, host: string, service: string, 
     '              - endpoint:',
     '                  address:',
     '                    socket_address:',
-    `                      address: ${host}`,
+    `                      address: ${tenantNetworkAlias(slug, service)}`,
     `                      port_value: ${port}`,
   ].join('\n')
 }
 
 /**
+ * The unique network alias a tenant's service must publish on its own network.
+ *
+ * The tenant compose must declare this alias for the address above to resolve. `buildTenantAliases`
+ * returns the map the compose generator writes.
+ */
+export function tenantNetworkAlias(slug: string, service: string): string {
+  return `${slug}-${service}`
+}
+
+/** service -> alias, for every service a tenant stack must publish. */
+export function buildTenantAliases(slug: string): Record<string, string> {
+  return Object.fromEntries(TENANT_UPSTREAMS.map((u) => [u.service, tenantNetworkAlias(slug, u.service)]))
+}
+
+/**
  * Build the shared CDS: every tenant's every service, each namespaced.
  *
- * `address` is the tenant's own compose service name, resolved by Docker DNS on the tenant's
- * network — which is why the shared gateway needs a network attachment per tenant (phase 1
- * routing work), not a shared network.
+ * `address` is the tenant's own namespaced network alias, resolved by Docker DNS on the tenant's
+ * network — which is why the shared gateway needs a network attachment per tenant (phase 1 routing
+ * work), not a shared network.
  */
 export function buildSharedClusters(tenants: TenantGatewayInput[]): string {
   const blocks: string[] = []
   for (const tenant of tenants) {
     for (const upstream of TENANT_UPSTREAMS) {
-      blocks.push(buildTenantCluster(tenant.slug, upstream.host, upstream.service, upstream.port))
+      blocks.push(
+        buildTenantCluster(tenant.slug, upstream.host, upstream.service, upstream.port)
+      )
     }
   }
   return `resources:\n${blocks.join('\n\n')}\n`

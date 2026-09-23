@@ -6,6 +6,7 @@ import {
   TENANT_UPSTREAMS,
   buildSharedClusters,
   buildSharedGateway,
+  buildTenantAliases,
   findClusterRefsNotOwnedBy,
   findCrossTenantSecretLeaks,
   findUnresolvedPlaceholders,
@@ -256,6 +257,32 @@ describe('cluster references are namespaced per tenant', () => {
     expect(cds).toContain('port_value: 4000') // realtime
     expect(cds).toContain('port_value: 9000') // functions
     expect(cds).not.toMatch(/^\s*name:\s*auth\s*$/m)
+  })
+
+  it('addresses every cluster by a namespaced alias, never a bare service name', () => {
+    // With the shared gateway attached to several tenant networks that each define `auth`, `rest`,
+    // `db`…, a bare name is ambiguous and could resolve into a sibling tenant. Every endpoint must
+    // therefore carry its tenant prefix.
+    //
+    // `[ \t]` rather than `\s`: `\s` matches newlines, so `^\s*address:\s*(\S+)$` skips past a bare
+    // `address:` line and captures the *next* line's `socket_address:` as the value.
+    const cds = buildSharedClusters(TENANTS)
+    const addresses = [...cds.matchAll(/^[ \t]*address:[ \t]*(\S+)[ \t]*$/gm)].map((m) => m[1])
+    expect(addresses.length).toBe(TENANTS.length * TENANT_UPSTREAMS.length)
+    for (const address of addresses) {
+      expect(TENANTS.some((t) => address.startsWith(`${t.slug}-`))).toBe(true)
+    }
+    // and specifically, no bare `auth` / `db` / `rest` endpoint survives
+    for (const bare of ['auth', 'rest', 'db', 'storage', 'realtime', 'functions']) {
+      expect(addresses).not.toContain(bare)
+    }
+  })
+
+  it('exposes the alias map the tenant compose must publish', () => {
+    const aliases = buildTenantAliases(TENANTS[0].slug)
+    for (const upstream of TENANT_UPSTREAMS) {
+      expect(aliases[upstream.service]).toBe(`${TENANTS[0].slug}-${upstream.service}`)
+    }
   })
 })
 
