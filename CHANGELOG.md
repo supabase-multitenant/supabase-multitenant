@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **ADR-0003: shared infrastructure plane, per-tenant databases.** The platform is stood up
+  **once** — one gateway, one pooler, one dashboard, one imgproxy — and a new project adds only a
+  database plus the services that physically cannot multiplex. This supersedes the inherited
+  "full isolated stack per project" model, which duplicated ~half of every stack (measured: one
+  idle project = 1,616.8 MiB across 11 containers, of which 832 MiB is infrastructure copied
+  again). Implementation plan: `docs/plans/2026-09-23-shared-infrastructure-plane.md`.
+
 ## [1.1.0] - 2026-09-23
 
 ### Added
