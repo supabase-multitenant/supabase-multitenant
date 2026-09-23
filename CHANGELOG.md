@@ -14,6 +14,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   "full isolated stack per project" model, which duplicated ~half of every stack (measured: one
   idle project = 1,616.8 MiB across 11 containers, of which 832 MiB is infrastructure copied
   again). Implementation plan: `docs/plans/2026-09-23-shared-infrastructure-plane.md`.
+- **Phase 0 — the shared-plane boundary as a tested invariant** (`src/lib/shared-plane.ts`,
+  `tests/shared-plane.test.ts`). `splitProjectCompose()` lifts the shared services out of a
+  generated stack and throws `SharedPlaneLeakError` rather than ever emitting one that still
+  carries duplicated infrastructure. Verified against the real 589-line generated compose:
+  hoists `studio, api-gw, imgproxy, meta, supavisor`; keeps `auth, rest, realtime, storage,
+  functions, db`; trailer preserved. Footprint reference: `docs/reference/service-footprint.md`.
+- **Phase 1 (build) — the shared gateway** (`src/lib/gateway.ts`, `tests/gateway.test.ts`).
+  One envoy for every tenant instead of one per project. The per-project listener ships
+  `domains: ['*']`, which is only safe while each tenant has its own gateway and port; collapsed
+  into one, it means every tenant's listener answers for every host. `buildSharedGateway()`
+  therefore restricts each virtual host to its own host, namespaces every cluster reference
+  (`auth` → `<slug>-auth`), and **throws** rather than emit a listener that still matches any host
+  or that references a cluster it does not own.
+  Verified against the real 1,101-line `lds.template.yaml`: 1 wildcard → 0 in the shared listener;
+  42 cluster references, 0 owned by nobody; 14 namespaced clusters in the CDS, none un-namespaced;
+  tenant A's segment contains no reference to tenant B.
 
 ## [1.1.0] - 2026-09-23
 
