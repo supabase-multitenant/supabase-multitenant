@@ -97,9 +97,9 @@ Resulting footprint:
 
 **Negative / accepted cost**
 
-- **This departs from upstream.** SupaPanel/SupaConsole are built as full-stack-per-project; the
-  compose generator, the routing layer and the project lifecycle all change. Upstream rebases will
-  get harder, and this becomes the defining difference of our fork.
+- **This departs from upstream.** The control panel this project was forked from is built as
+  full-stack-per-project; the compose generator, the routing layer and the project lifecycle all
+  change. Upstream rebases will get harder, and this becomes the defining difference of our fork.
 - The shared pooler, gateway and dashboard become **single points of failure** for every tenant.
   They need health checks, restart policy and blast-radius thinking that per-project stacks did
   not require.
