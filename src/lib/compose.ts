@@ -94,3 +94,36 @@ export function namespaceContainerNames(composeContent: string, slug: string): s
 
   return output
 }
+
+/** Filename (relative to the compose file) holding a project's edge-function secrets. */
+export const FUNCTIONS_ENV_FILE = '.env.functions'
+
+/**
+ * Ensure the `functions` service loads the project's edge-function secrets file.
+ *
+ * The edge-runtime service only reads a fixed allowlist of `environment:` keys, so
+ * user secrets in the stack `.env` never reach `Deno.env.get()`. Adding an
+ * `env_file` entry (Supabase's self-hosting approach) makes `docker/.env.functions`
+ * available to the functions container only.
+ *
+ * Pure and idempotent: if an `env_file` already lists the file, the content is
+ * returned unchanged, so it is safe to run on both fresh and already-generated
+ * stacks (backfill).
+ */
+export function ensureFunctionsEnvFile(composeContent: string): string {
+  const serviceMatch = composeContent.match(/^([ \t]*)functions:[ \t]*$/m)
+  if (!serviceMatch) {
+    throw new Error('Cannot add edge-function env_file: no `functions:` service in the compose file')
+  }
+
+  // Already wired up (idempotent) — the file appears anywhere in the document.
+  if (composeContent.includes(FUNCTIONS_ENV_FILE)) {
+    return composeContent
+  }
+
+  // Insert as the first key under the service, indented one level past `functions:`.
+  const serviceIndent = serviceMatch[1]
+  const keyIndent = `${serviceIndent}  `
+  const block = `\n${keyIndent}env_file:\n${keyIndent}  - ${FUNCTIONS_ENV_FILE}`
+  return composeContent.replace(serviceMatch[0], `${serviceMatch[0]}${block}`)
+}

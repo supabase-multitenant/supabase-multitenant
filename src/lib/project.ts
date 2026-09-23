@@ -5,7 +5,8 @@ import { promisify } from 'util'
 import { prisma } from './db'
 import { removeProjectTraefikConfig } from './traefik'
 import { getCoreBasePath, getProjectsBasePath } from './paths'
-import { namespaceContainerNames } from './compose'
+import { FUNCTIONS_ENV_FILE, ensureFunctionsEnvFile, namespaceContainerNames } from './compose'
+import { serializeEnvFile, validateFunctionSecrets } from './function-secrets'
 
 const execAsync = promisify(exec)
 
@@ -199,6 +200,11 @@ export async function createProject(
     // stack containing a shared container name.
     dockerComposeContent = namespaceContainerNames(dockerComposeContent, slug)
 
+    // Wire the edge-runtime to this project's edge-function secrets file. The
+    // functions service otherwise only reads a fixed env allowlist, so user
+    // secrets never reach Deno.env.get(). See ensureFunctionsEnvFile().
+    dockerComposeContent = ensureFunctionsEnvFile(dockerComposeContent)
+
     // Update the compose project name to be unique
     dockerComposeContent = dockerComposeContent.replace(
       /^name: supabase$/m,
@@ -208,6 +214,9 @@ export async function createProject(
 
     // Write the modified docker-compose.yml back
     await fs.writeFile(dockerComposeFile, dockerComposeContent)
+
+    // The env_file above must exist or `docker compose up` fails; start empty.
+    await fs.writeFile(path.join(projectDir, 'docker', FUNCTIONS_ENV_FILE), '')
 
     // Generate unique default port values to prevent conflicts
     const basePort = 8000 + (timestamp % 10000) // Use last 4 digits of timestamp for uniqueness
@@ -340,6 +349,57 @@ export async function updateProjectEnvVars(projectId: string, envVars: Record<st
     return { success: true }
   } catch (error) {
     console.error('Failed to update project env vars:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+/**
+ * Replace a project's edge-function secrets.
+ *
+ * `secrets` is the full desired set: rows not present are removed. Writes the
+ * per-project docker/.env.functions the edge-runtime reads via env_file, and
+ * backfills that env_file entry into the compose for projects created before this
+ * feature. Secrets take effect on the next deploy.
+ */
+export async function updateFunctionSecrets(projectId: string, secrets: Record<string, string>) {
+  try {
+    validateFunctionSecrets(secrets)
+
+    const project = await prisma.project.findUnique({ where: { id: projectId } })
+    if (!project) {
+      throw new Error('Project not found')
+    }
+
+    const keys = Object.keys(secrets)
+
+    // Full-replace: drop removed keys, then upsert the rest. When nothing is
+    // submitted, drop everything for the project.
+    await prisma.projectFunctionSecret.deleteMany({
+      where: keys.length ? { projectId, key: { notIn: keys } } : { projectId },
+    })
+    for (const [key, value] of Object.entries(secrets)) {
+      await prisma.projectFunctionSecret.upsert({
+        where: { projectId_key: { projectId, key } },
+        update: { value },
+        create: { projectId, key, value },
+      })
+    }
+
+    // Write the secrets file the edge-runtime loads.
+    const dockerDir = path.join(getProjectsBasePath(), project.slug, 'docker')
+    await fs.writeFile(path.join(dockerDir, FUNCTIONS_ENV_FILE), serializeEnvFile(secrets))
+
+    // Backfill the env_file wiring for stacks generated before this feature.
+    const composeFile = path.join(dockerDir, 'docker-compose.yml')
+    const compose = await fs.readFile(composeFile, 'utf8')
+    const wired = ensureFunctionsEnvFile(compose)
+    if (wired !== compose) {
+      await fs.writeFile(composeFile, wired)
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to update project function secrets:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }

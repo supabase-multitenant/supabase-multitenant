@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  FUNCTIONS_ENV_FILE,
   UnnamespacedContainerError,
+  ensureFunctionsEnvFile,
   findUnnamespacedContainerNames,
   isNamespacedContainerName,
   listContainerNames,
@@ -165,6 +167,33 @@ describe('namespaceContainerNames — guard', () => {
   it('rejects an empty or unsafe slug', () => {
     expect(() => namespaceContainerNames(COMPOSE, '')).toThrow(/Invalid project slug/)
     expect(() => namespaceContainerNames(COMPOSE, 'Bad Slug')).toThrow(/Invalid project slug/)
+  })
+})
+
+describe('ensureFunctionsEnvFile', () => {
+  it('adds an env_file entry under the functions service', () => {
+    const out = ensureFunctionsEnvFile(COMPOSE)
+    expect(out).toMatch(
+      new RegExp(`functions:\\n {4}env_file:\\n {6}- ${FUNCTIONS_ENV_FILE.replace('.', '\\.')}`)
+    )
+  })
+
+  it('is idempotent', () => {
+    const once = ensureFunctionsEnvFile(COMPOSE)
+    expect(ensureFunctionsEnvFile(once)).toEqual(once)
+  })
+
+  it('does not touch other services', () => {
+    const out = ensureFunctionsEnvFile(COMPOSE)
+    // env_file appears exactly once, and only the functions service gains it.
+    expect(out.match(/env_file:/g)).toHaveLength(1)
+    expect(out).toContain('container_name: supabase-db')
+    expect(out).toContain('container_name: supabase-studio')
+  })
+
+  it('throws if there is no functions service', () => {
+    const noFunctions = COMPOSE.replace(/  functions:[\s\S]*?image: [^\n]*\n/, '')
+    expect(() => ensureFunctionsEnvFile(noFunctions)).toThrow(/no `functions:` service/)
   })
 })
 
