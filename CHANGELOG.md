@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-23
+
 ### Added
 - Implementation plan + roadmap: full Auth.js auth, users/roles/RBAC, system DB
   (`supabase-multitenant-system-main-db`), and a Supabase.com-like dashboard UX
@@ -14,6 +16,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - ADR-0001 (Auth.js v5 + Prisma adapter) and ADR-0002 (system DB topology).
 - App-level Studio gateway: per-project Studio is now served behind the panel's own session
   auth via a pretty `*.sslip.io` subdomain (header + internal rewrite; no redirect loop).
+- **Edge-function secrets** (#112, contributed by [@TeitoShiota](https://github.com/TeitoShiota)):
+  per-project environment variables exposed only to that project's Edge Functions. Stored in a
+  separate `ProjectFunctionSecret` model — not `ProjectEnvVar` — so the stack `.env` (ports,
+  database password, hosts) never reaches function scope. Wired through a per-project
+  `docker/.env.functions` file referenced by the `functions` service `env_file` (Supabase's own
+  self-hosting convention), with a pure validation module, reserved-key rejection, idempotent
+  compose wiring, and audit records that store **key names only**.
 
 ### Fixed
 - Studio subdomain redirect loop caused by Traefik `addPrefix` + Next trailing-slash
@@ -22,11 +31,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   relative to the public host.
 - Route-root 404 (`[...rest]` → optional catch-all `[[...rest]]`).
 - Panel `/dashboard` was only client-guarded; now enforced server-side in middleware.
+- **Control-plane session secret was the public default.** `docker-compose.yml` referenced
+  `${NEXTAUTH_SECRET:-supabase-multitenant-change-me-please}`, which makes Coolify register a
+  variable whose value *is* that literal default — so the panel signed sessions with a
+  publicly known string. It now references Coolify's generated
+  `SERVICE_PASSWORD_NEXTAUTHSECRET`, matching the one-click template.
 
 ### Security
 - Closed public exposure of the per-project stack: Postgres `:19601` and pooler `:20601` are
   now loopback-only; API `:17601` and Studio `:17701` bind to the private bridge. No global
   firewall/DNS/port-forward changes; production ports untouched.
+
+### Dependencies
+- React 19.2.3 → 19.3.0 (+ `@types/react`), `@radix-ui/react-label` → 2.1.15,
+  Prisma 6.19.1 → 6.19.3, Autoprefixer → 10.5.5, `@eslint/eslintrc` → 3.3.7.
+- CI actions: `actions/setup-node` → v7, `actions/cache` → v6, `docker/login-action` → v4,
+  `docker/metadata-action` → v6, `softprops/action-gh-release` → v3.
+- Repository: created the `version:patch` / `version:minor` / `version:major` / `skip-version`
+  / `dependencies` labels the release workflows require. They had never existed, so every
+  Dependabot PR was permanently blocked on the *Check Version Label* job.
 
 ## [1.0.0] - 2026-09-09
 ### Added

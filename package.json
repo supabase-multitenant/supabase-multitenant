@@ -1,6 +1,6 @@
 {
   "name": "supabase-multitenant",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Self-host Supabase as your own Supabase.com-style cloud — 1 infrastructure, many isolated databases with scalable multitenancy.",
   "license": "MIT",
   "private": true,
