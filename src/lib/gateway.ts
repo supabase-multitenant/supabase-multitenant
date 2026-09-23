@@ -62,6 +62,117 @@ export interface TenantGatewayInput {
   slug: string
   /** The public host this tenant answers on. Must be a single concrete host, never `*`. */
   host: string
+  /**
+   * This tenant's own keys. Required: the listener template embeds `$ANON_KEY` and friends in its
+   * JWT/RBAC filters, and in a shared gateway those placeholders must be resolved **per tenant**.
+   * Leaving them unresolved would either bake one tenant's key into every virtual host or ship
+   * the literal placeholder string.
+   */
+  secrets: TenantGatewaySecrets
+}
+
+/** Per-tenant values the listener template interpolates into its auth filters. */
+export interface TenantGatewaySecrets {
+  anonKey: string
+  serviceRoleKey: string
+  /** The tenant's own public URL — used in redirects and CORS, so it must not be a shared value. */
+  publicUrl: string
+  publishableKey?: string
+  secretKey?: string
+  anonKeyAsymmetric?: string
+  serviceRoleKeyAsymmetric?: string
+}
+
+/**
+ * Placeholders that belong to the shared platform, not to a tenant.
+ *
+ * Studio is hoisted into the shared plane, so its dashboard credential is the platform's single
+ * credential. A per-tenant basic auth for a shared dashboard would be meaningless (and would mean
+ * N dashboards, i.e. the thing this phase removes).
+ */
+export const PLATFORM_LEVEL_PLACEHOLDERS = ['DASHBOARD_BASIC_AUTH'] as const
+
+/** Resolve this tenant's keys into its listener fragment. */
+export function substituteTenantSecrets(
+  fragment: string,
+  secrets: TenantGatewaySecrets
+): string {
+  const values: Record<string, string | undefined> = {
+    ANON_KEY: secrets.anonKey,
+    SERVICE_ROLE_KEY: secrets.serviceRoleKey,
+    SUPABASE_PUBLIC_URL: secrets.publicUrl,
+    SUPABASE_PUBLISHABLE_KEY: secrets.publishableKey,
+    SUPABASE_SECRET_KEY: secrets.secretKey,
+    ANON_KEY_ASYMMETRIC: secrets.anonKeyAsymmetric,
+    SERVICE_ROLE_KEY_ASYMMETRIC: secrets.serviceRoleKeyAsymmetric,
+  }
+
+  let output = fragment
+  for (const [name, value] of Object.entries(values)) {
+    // Absent optional keys resolve to empty, matching the upstream entrypoint's behaviour.
+    output = output.replaceAll(`\${${name}}`, value ?? '')
+  }
+  return output
+}
+
+/**
+ * Tenant-scoped placeholders still unresolved in a fragment.
+ *
+ * A survivor means one tenant's virtual host would be built from another tenant's key (or from the
+ * literal string `$ANON_KEY`) — both are cross-tenant auth failures, so the caller must throw.
+ * Platform-level placeholders are expected to survive into the shared entrypoint.
+ */
+export function findUnresolvedPlaceholders(fragment: string): string[] {
+  const found = [...fragment.matchAll(/\$\{([A-Z0-9_]+)\}/g)].map((m) => m[1])
+  const platform = new Set<string>(PLATFORM_LEVEL_PLACEHOLDERS)
+  return [...new Set(found.filter((name) => !platform.has(name)))]
+}
+
+/**
+ * Does one tenant's secret appear inside another tenant's segment of the listener?
+ *
+ * The strongest isolation property available without running envoy: if tenant B's segment contains
+ * tenant A's anon key, then A's requests could be authenticated as B.
+ *
+ * Segments are bounded by each tenant's host marker in *document order*, not by a naive
+ * `split(host)` — each fragment embeds the full template, so "everything after A's host" would
+ * otherwise include all of B and report a false leak on a correct config.
+ */
+export function findCrossTenantSecretLeaks(
+  listener: string,
+  tenants: TenantGatewayInput[]
+): Array<{ tenant: string; leaks: string[] }> {
+  const markers = tenants
+    .map((tenant) => ({ slug: tenant.slug, at: listener.indexOf(`- '${tenant.host}'`) }))
+    .filter((marker) => marker.at >= 0)
+    .sort((a, b) => a.at - b.at)
+
+  const segmentOf: Record<string, string> = {}
+  for (let i = 0; i < markers.length; i++) {
+    const start = markers[i].at
+    const end = i + 1 < markers.length ? markers[i + 1].at : listener.length
+    segmentOf[markers[i].slug] = listener.slice(start, end)
+  }
+
+  const results: Array<{ tenant: string; leaks: string[] }> = []
+
+  for (const tenant of tenants) {
+    const own = segmentOf[tenant.slug]
+    if (own === undefined) continue
+
+    const leaks: string[] = []
+    for (const other of tenants) {
+      if (other.slug === tenant.slug) continue
+      const foreign = [other.secrets?.anonKey, other.secrets?.serviceRoleKey].filter(
+        (value) => typeof value === 'string' && value.length > 8 && own.includes(value)
+      )
+      if (foreign.length > 0) leaks.push(other.slug)
+    }
+
+    if (leaks.length > 0) results.push({ tenant: tenant.slug, leaks })
+  }
+
+  return results
 }
 
 /** The cluster name a tenant's service is reachable as inside the shared gateway. */
@@ -239,7 +350,20 @@ export function buildSharedListener(
 
   const virtualHosts: string[] = []
   for (const tenant of tenants) {
-    let fragment = namespaceClusterRefs(ldsFragmentTemplate, tenant.slug)
+    // Keys first: the fragment's filters reference them, and an unresolved tenant placeholder in a
+    // shared config is a cross-tenant auth failure.
+    let fragment = substituteTenantSecrets(ldsFragmentTemplate, tenant.secrets)
+
+    const unresolved = findUnresolvedPlaceholders(fragment)
+    if (unresolved.length > 0) {
+      throw new GatewayIsolationError(
+        `Tenant "${tenant.slug}" has unresolved tenant-scoped placeholders — its virtual host ` +
+          `would be built from a shared or missing value`,
+        unresolved
+      )
+    }
+
+    fragment = namespaceClusterRefs(fragment, tenant.slug)
     fragment = restrictVirtualHostDomains(fragment, tenant.host)
 
     const wildcards = findWildcardDomains(fragment)
@@ -262,7 +386,17 @@ export function buildSharedListener(
     virtualHosts.push(fragment.trimEnd())
   }
 
-  return `resources:\n  - '@type': type.googleapis.com/envoy.config.listener.v3.Listener\n${virtualHosts.join('\n')}\n`
+  const listener = `resources:\n  - '@type': type.googleapis.com/envoy.config.listener.v3.Listener\n${virtualHosts.join('\n')}\n`
+
+  const leaks = findCrossTenantSecretLeaks(listener, tenants)
+  if (leaks.length > 0) {
+    throw new GatewayIsolationError(
+      'A tenant\'s credentials appear inside another tenant\'s virtual host',
+      leaks.map((l) => `${l.tenant} exposes ${l.leaks.join(', ')}`)
+    )
+  }
+
+  return listener
 }
 
 /** Both halves of the shared gateway config, ready to be written next to each other. */

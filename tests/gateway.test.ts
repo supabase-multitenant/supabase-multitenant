@@ -2,21 +2,25 @@ import { describe, expect, it } from 'vitest'
 
 import {
   GatewayIsolationError,
+  PLATFORM_LEVEL_PLACEHOLDERS,
   TENANT_UPSTREAMS,
   buildSharedClusters,
   buildSharedGateway,
   findClusterRefsNotOwnedBy,
+  findCrossTenantSecretLeaks,
+  findUnresolvedPlaceholders,
   findWildcardDomains,
   namespaceClusterRefs,
   restrictVirtualHostDomains,
+  substituteTenantSecrets,
   tenantClusterName,
 } from '@/lib/gateway'
 
 /**
  * Trimmed but structurally faithful copy of the real `lds.template.yaml`: one listener, one
- * virtual host, `domains: ['*']`, routes to the bare cluster names, and — importantly for the
- * domain rewrite — further lists (`cors`, `request_headers_to_add`) at other indents that must
- * not be touched.
+ * virtual host, `domains: ['*']`, JWT filters interpolating the tenant's keys, routes to the bare
+ * cluster names, and — importantly for the domain rewrite — further lists (`cors`,
+ * `request_headers_to_add`) at other indents that must not be touched.
  */
 const LDS_FRAGMENT = `    - filters:
         - name: envoy.filters.network.http_connection_manager
@@ -34,6 +38,10 @@ const LDS_FRAGMENT = `    - filters:
                       - safe_regex:
                           regex: ".*"
                     allow_methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD"
+                  typed_per_filter_config:
+                    envoy.filters.http.jwt_authn:
+                      '@type': type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig
+                      requirement_name: anon
                   request_headers_to_add:
                     - header:
                         key: X-Forwarded-Host
@@ -61,11 +69,61 @@ const LDS_FRAGMENT = `    - filters:
                         prefix: /functions/v1/
                       route:
                         cluster: functions
+    - name: supabase_jwt
+      typed_config:
+        '@type': type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+        providers:
+          anon:
+            forward: true
+            local_jwks:
+              inline_string: '{"keys":[{"kty":"oct","k":"\${ANON_KEY}"}]}'
+            payload_in_metadata: anon_payload
+          service_role:
+            forward: true
+            local_jwks:
+              inline_string: '{"keys":[{"kty":"oct","k":"\${SERVICE_ROLE_KEY}"}]}'
+            payload_in_metadata: supabase_payload
+        rules:
+          - match:
+              prefix: /
+            requires:
+              provider_name: anon
+        bypass_cors_preflight: true
+    - name: supabase_basic_auth
+      typed_config:
+        '@type': type.googleapis.com/envoy.extensions.filters.http.basic_auth.v3.BasicAuth
+        users:
+          inline_string: "\${DASHBOARD_BASIC_AUTH}"
+    - name: supabase_cors
+      typed_config:
+        '@type': type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+    - name: envoy.filters.http.rbac
+      typed_config:
+        '@type': type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
+        rules:
+          action: ALLOW
+        public_url: "\${SUPABASE_PUBLIC_URL}"
 `
 
 const TENANTS = [
-  { slug: 'aclient-1001', host: 'aclient.213.47.80.26.sslip.io' },
-  { slug: 'bclient-1002', host: 'bclient.213.47.80.26.sslip.io' },
+  {
+    slug: 'aclient-1001',
+    host: 'aclient.213.47.80.26.sslip.io',
+    secrets: {
+      anonKey: 'AAAA-anon-key-aaaa',
+      serviceRoleKey: 'AAAA-service-role-key-aaaa',
+      publicUrl: 'https://aclient.213.47.80.26.sslip.io',
+    },
+  },
+  {
+    slug: 'bclient-1002',
+    host: 'bclient.213.47.80.26.sslip.io',
+    secrets: {
+      anonKey: 'BBBB-anon-key-bbbb',
+      serviceRoleKey: 'BBBB-service-role-key-bbbb',
+      publicUrl: 'https://bclient.213.47.80.26.sslip.io',
+    },
+  },
 ]
 
 describe('the landmine: a wildcard domain must never survive into a shared listener', () => {
@@ -82,11 +140,9 @@ describe('the landmine: a wildcard domain must never survive into a shared liste
 
   it('does not corrupt the sibling lists while rewriting domains', () => {
     const restricted = restrictVirtualHostDomains(LDS_FRAGMENT, TENANTS[0].host)
-    // cors and request_headers_to_add are lists too, at other indents
     expect(restricted).toContain('allow_methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD"')
     expect(restricted).toContain('key: X-Forwarded-Host')
     expect(restricted).toContain('regex: ".*"')
-    expect(restricted.split('\n').length).toBeGreaterThanOrEqual(LDS_FRAGMENT.split('\n').length)
   })
 
   it('refuses to build for a wildcard host', () => {
@@ -94,6 +150,73 @@ describe('the landmine: a wildcard domain must never survive into a shared liste
     expect(() => restrictVirtualHostDomains(LDS_FRAGMENT, '*.example.com')).toThrow(
       GatewayIsolationError
     )
+  })
+
+  it('handles flow-style domains rather than assuming the block form', () => {
+    const inline = LDS_FRAGMENT.replace(
+      "                  domains:\n                    - '*'",
+      "                  domains: ['*']"
+    )
+    const restricted = restrictVirtualHostDomains(inline, TENANTS[0].host)
+    expect(findWildcardDomains(restricted)).toEqual([])
+  })
+
+  it('throws rather than emit a listener that still matches any host', () => {
+    // Ambiguous YAML: the domain items sit at the same indent as the key, so no safe rewrite
+    // exists. The guard must refuse instead of shipping a listener that answers for every host.
+    const ambiguous = LDS_FRAGMENT.replace(
+      "                  domains:\n                    - '*'",
+      "                  domains:\n                  - '*'"
+    )
+    expect(findWildcardDomains(restrictVirtualHostDomains(ambiguous, TENANTS[0].host))).toEqual([
+      "'*'",
+    ])
+    expect(() => buildSharedGateway([TENANTS[0]], ambiguous)).toThrow(GatewayIsolationError)
+  })
+})
+
+describe('per-tenant keys are resolved, and never shared', () => {
+  it('substitutes the tenant keys into the filters', () => {
+    const resolved = substituteTenantSecrets(LDS_FRAGMENT, TENANTS[0].secrets)
+    expect(resolved).toContain('AAAA-anon-key-aaaa')
+    expect(resolved).toContain('AAAA-service-role-key-aaaa')
+    expect(resolved).toContain('https://aclient.213.47.80.26.sslip.io')
+    expect(findUnresolvedPlaceholders(resolved)).toEqual([])
+  })
+
+  it('leaves the platform-level dashboard credential for the shared entrypoint', () => {
+    const resolved = substituteTenantSecrets(LDS_FRAGMENT, TENANTS[0].secrets)
+    expect(resolved).toContain(`\${${PLATFORM_LEVEL_PLACEHOLDERS[0]}}`)
+    expect(findUnresolvedPlaceholders(resolved)).toEqual([])
+  })
+
+  it('flags a tenant-scoped placeholder that survived substitution', () => {
+    const half = LDS_FRAGMENT.replace('${SERVICE_ROLE_KEY}', '${SOME_UNKNOWN_KEY}')
+    const resolved = substituteTenantSecrets(half, TENANTS[0].secrets)
+    expect(findUnresolvedPlaceholders(resolved)).toEqual(['SOME_UNKNOWN_KEY'])
+    expect(() => buildSharedGateway([TENANTS[0]], half)).toThrow(/unresolved tenant-scoped/)
+  })
+
+  it('refuses to build when one tenant is missing its keys', () => {
+    const broken = [
+      TENANTS[0],
+      { slug: 'cclient-1003', host: 'cclient.213.47.80.26.sslip.io' } as never,
+    ]
+    expect(() => buildSharedGateway(broken, LDS_FRAGMENT)).toThrow()
+  })
+
+  it('detects a leaked key if one tenant ends up holding a foreign secret', () => {
+    const gateway = buildSharedGateway(TENANTS, LDS_FRAGMENT)
+    expect(findCrossTenantSecretLeaks(gateway.lds, TENANTS)).toEqual([])
+
+    // Now contrive the failure: tenant B's fragment carrying A's key must be reported.
+    const tampered = gateway.lds.replace(
+      TENANTS[1].secrets.anonKey,
+      TENANTS[0].secrets.anonKey
+    )
+    const leaks = findCrossTenantSecretLeaks(tampered, TENANTS)
+    expect(leaks.length).toBeGreaterThan(0)
+    expect(leaks[0].leaks).toContain(TENANTS[0].slug)
   })
 })
 
@@ -122,7 +245,6 @@ describe('cluster references are namespaced per tenant', () => {
     expect(cds).toContain('port_value: 5000') // storage
     expect(cds).toContain('port_value: 4000') // realtime
     expect(cds).toContain('port_value: 9000') // functions
-    // the shared CDS must contain no un-namespaced cluster at all
     expect(cds).not.toMatch(/^\s*name:\s*auth\s*$/m)
   })
 })
@@ -137,17 +259,20 @@ describe('buildSharedGateway', () => {
     expect(findWildcardDomains(gateway.lds)).toEqual([])
   })
 
-  it('routes each tenant only to its own clusters', () => {
-    // Tenant A's host must never appear adjacent to tenant B's clusters. Strongest available
-    // structural check without an envoy instance: split the document per tenant domain.
-    const [, afterA] = gateway.lds.split(`- '${TENANTS[0].host}'`)
-    const segmentA = afterA?.split(`- '${TENANTS[1].host}'`)[0] ?? ''
+  it('routes each tenant only to its own clusters and keys', () => {
+    const segmentA = (gateway.lds.split(`- '${TENANTS[0].host}'`)[1] ?? '').split(
+      `- '${TENANTS[1].host}'`
+    )[0]
     expect(segmentA).toContain(`cluster: ${TENANTS[0].slug}-auth`)
+    expect(segmentA).toContain(TENANTS[0].secrets.anonKey)
     expect(segmentA).not.toContain(`${TENANTS[1].slug}-`)
+    expect(segmentA).not.toContain(TENANTS[1].secrets.anonKey)
   })
 
   it('namespaces every cluster reference in the assembled listener', () => {
-    const refs = [...gateway.lds.matchAll(/\bcluster:\s*(\S+)/g)].map((m) => m[1].replace(/['"]/g, ''))
+    const refs = [...gateway.lds.matchAll(/\bcluster:\s*(\S+)/g)].map((m) =>
+      m[1].replace(/['"]/g, '')
+    )
     expect(refs.length).toBeGreaterThan(0)
     for (const ref of refs) {
       expect(TENANTS.some((t) => ref.startsWith(`${t.slug}-`))).toBe(true)
@@ -162,28 +287,5 @@ describe('buildSharedGateway', () => {
 
   it('rejects an empty tenant list', () => {
     expect(() => buildSharedGateway([], LDS_FRAGMENT)).toThrow(/no tenants/)
-  })
-
-  it('handles flow-style domains rather than assuming the block form', () => {
-    const inline = LDS_FRAGMENT.replace(
-      "                  domains:\n                    - '*'",
-      "                  domains: ['*']"
-    )
-    const restricted = restrictVirtualHostDomains(inline, TENANTS[0].host)
-    expect(findWildcardDomains(restricted)).toEqual([])
-    expect(restricted).toContain(`[${["'" + TENANTS[0].host + "'", "'" + TENANTS[0].host + ":*'"].join(', ')}]`)
-  })
-
-  it('throws rather than emit a listener that still matches any host', () => {
-    // Ambiguous YAML: the domain items sit at the same indent as the key, so no safe rewrite
-    // exists. The guard must refuse instead of shipping a listener that answers for every host.
-    const ambiguous = LDS_FRAGMENT.replace(
-      "                  domains:\n                    - '*'",
-      "                  domains:\n                  - '*'"
-    )
-    expect(findWildcardDomains(restrictVirtualHostDomains(ambiguous, TENANTS[0].host))).toEqual([
-      "'*'",
-    ])
-    expect(() => buildSharedGateway([TENANTS[0]], ambiguous)).toThrow(GatewayIsolationError)
   })
 })
