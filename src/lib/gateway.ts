@@ -63,6 +63,12 @@ export interface TenantGatewayInput {
   /** The public host this tenant answers on. Must be a single concrete host, never `*`. */
   host: string
   /**
+   * An internal DNS name for service-to-service traffic through this same gateway, e.g.
+   * `<slug>-gw`. A tenant's own services (edge functions, Studio) call the Supabase API by name
+   * rather than by public host, so the tenant's listener must also accept `<internalHost>:<port>`.
+   */
+  internalHost?: string
+  /**
    * This tenant's own keys. Required: the listener template embeds `$ANON_KEY` and friends in its
    * JWT/RBAC filters, and in a shared gateway those placeholders must be resolved **per tenant**.
    * Leaving them unresolved would either bake one tenant's key into every virtual host or ship
@@ -209,7 +215,11 @@ export function namespaceClusterRefs(fragment: string, slug: string): string {
  * `routes`, `request_headers_to_add`), and a pattern that merely matches "an indented `-` line"
  * would swallow the next one at a different indent and corrupt the config.
  */
-export function restrictVirtualHostDomains(fragment: string, host: string): string {
+export function restrictVirtualHostDomains(
+  fragment: string,
+  host: string,
+  extraDomains: string[] = []
+): string {
   if (!host || host === '*' || host.includes('*')) {
     throw new GatewayIsolationError(
       `Refusing to build a shared listener for wildcard host ${JSON.stringify(host)}`,
@@ -217,8 +227,17 @@ export function restrictVirtualHostDomains(fragment: string, host: string): stri
     )
   }
 
+  for (const extra of extraDomains) {
+    if (extra === '*' || extra.includes('*')) {
+      throw new GatewayIsolationError(
+        `Refusing to add a wildcard extra domain ${JSON.stringify(extra)}`,
+        [extra]
+      )
+    }
+  }
+
   const lines = fragment.split('\n')
-  const domains = [`'${host}'`, `'${host}:*'`]
+  const domains = [`'${host}'`, `'${host}:*'`, ...extraDomains.map((d) => `'${d}'`)]
   const output: string[] = []
 
   for (let i = 0; i < lines.length; i++) {
@@ -330,18 +349,42 @@ export function buildTenantCluster(
 }
 
 /**
- * The unique network alias a tenant's service must publish on its own network.
+ * The Docker DNS name a tenant's service answers to.
  *
- * The tenant compose must declare this alias for the address above to resolve. `buildTenantAliases`
- * returns the map the compose generator writes.
+ * Read off the real generated compose, not assumed: the template sets an explicit
+ * `container_name` for every service, and that name — not the compose service key — is what Docker
+ * registers as the network alias. Four of them do **not** follow `<slug>-<service>`:
+ *
+ *   api-gw    -> <slug>-envoy
+ *   functions -> <slug>-edge-functions
+ *   supavisor -> <slug>-pooler
+ *   realtime  -> realtime-dev.<slug>-realtime
+ *
+ * Using the service key here would produce a config that resolves to nothing.
  */
-export function tenantNetworkAlias(slug: string, service: string): string {
-  return `${slug}-${service}`
+export function tenantContainerName(slug: string, service: string): string {
+  switch (service) {
+    case 'api-gw':
+      return `${slug}-envoy`
+    case 'functions':
+      return `${slug}-edge-functions`
+    case 'supavisor':
+      return `${slug}-pooler`
+    case 'realtime':
+      return `realtime-dev.${slug}-realtime`
+    default:
+      return `${slug}-${service}`
+  }
 }
 
-/** service -> alias, for every service a tenant stack must publish. */
+/** Backwards-compatible alias: the network alias IS the container name. */
+export function tenantNetworkAlias(slug: string, service: string): string {
+  return tenantContainerName(slug, service)
+}
+
+/** service -> the DNS name a tenant stack actually publishes. */
 export function buildTenantAliases(slug: string): Record<string, string> {
-  return Object.fromEntries(TENANT_UPSTREAMS.map((u) => [u.service, tenantNetworkAlias(slug, u.service)]))
+  return Object.fromEntries(TENANT_UPSTREAMS.map((u) => [u.service, tenantContainerName(slug, u.service)]))
 }
 
 /**
@@ -455,6 +498,9 @@ export function buildSharedListener(
   const listeners: string[] = []
 
   tenants.forEach((tenant, index) => {
+    const port = basePort + index
+    ports[tenant.slug] = port
+
     // Keys first: the fragment's filters reference them, and an unresolved tenant placeholder in a
     // shared config is a cross-tenant auth failure.
     let fragment = substituteTenantSecrets(ldsFragmentTemplate, tenant.secrets)
@@ -469,7 +515,12 @@ export function buildSharedListener(
     }
 
     fragment = namespaceClusterRefs(fragment, tenant.slug)
-    fragment = restrictVirtualHostDomains(fragment, tenant.host)
+
+    // Internal (service-to-service) traffic addresses the gateway by name on a per-tenant port,
+    // so the tenant's own listener must accept that host too — e.g. `drill-…-gw:8102`. It is
+    // tenant-specific and port-specific, so it cannot match a sibling's listener.
+    const extraDomains = tenant.internalHost ? [`${tenant.internalHost}:${port}`] : []
+    fragment = restrictVirtualHostDomains(fragment, tenant.host, extraDomains)
 
     const wildcards = findWildcardDomains(fragment)
     if (wildcards.length > 0) {
@@ -488,8 +539,6 @@ export function buildSharedListener(
       )
     }
 
-    const port = basePort + index
-    ports[tenant.slug] = port
     listeners.push(retargetListener(fragment.trimEnd(), { name: `supabase-${tenant.slug}`, port }))
   })
 

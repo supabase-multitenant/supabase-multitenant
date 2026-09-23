@@ -16,6 +16,7 @@ import {
   retargetListener,
   substituteTenantSecrets,
   tenantClusterName,
+  tenantContainerName,
 } from '@/lib/gateway'
 
 /**
@@ -270,7 +271,10 @@ describe('cluster references are namespaced per tenant', () => {
     const addresses = [...cds.matchAll(/^[ \t]*address:[ \t]*(\S+)[ \t]*$/gm)].map((m) => m[1])
     expect(addresses.length).toBe(TENANTS.length * TENANT_UPSTREAMS.length)
     for (const address of addresses) {
-      expect(TENANTS.some((t) => address.startsWith(`${t.slug}-`))).toBe(true)
+      // `contains`, not `startsWith`: realtime legitimately reads `realtime-dev.<slug>-realtime`.
+      // What matters is that the name carries its tenant's slug, making it unique across every
+      // network the shared gateway is attached to.
+      expect(TENANTS.some((t) => address.includes(t.slug))).toBe(true)
     }
     // and specifically, no bare `auth` / `db` / `rest` endpoint survives
     for (const bare of ['auth', 'rest', 'db', 'storage', 'realtime', 'functions']) {
@@ -281,8 +285,28 @@ describe('cluster references are namespaced per tenant', () => {
   it('exposes the alias map the tenant compose must publish', () => {
     const aliases = buildTenantAliases(TENANTS[0].slug)
     for (const upstream of TENANT_UPSTREAMS) {
-      expect(aliases[upstream.service]).toBe(`${TENANTS[0].slug}-${upstream.service}`)
+      expect(aliases[upstream.service]).toBeDefined()
+      expect(aliases[upstream.service]).toContain(TENANTS[0].slug)
     }
+  })
+
+  it('uses the real container names, not the compose service keys', () => {
+    // Verified against the live containers: the template sets an explicit container_name for every
+    // service, and that — not the compose key — is the Docker DNS alias. Using the key would emit a
+    // config that resolves to nothing.
+    const slug = 'drill-restore-164259-1789051379623'
+    expect(tenantContainerName(slug, 'auth')).toBe(`${slug}-auth`)
+    expect(tenantContainerName(slug, 'db')).toBe(`${slug}-db`)
+    expect(tenantContainerName(slug, 'rest')).toBe(`${slug}-rest`)
+    expect(tenantContainerName(slug, 'storage')).toBe(`${slug}-storage`)
+    expect(tenantContainerName(slug, 'studio')).toBe(`${slug}-studio`)
+    expect(tenantContainerName(slug, 'meta')).toBe(`${slug}-meta`)
+    expect(tenantContainerName(slug, 'imgproxy')).toBe(`${slug}-imgproxy`)
+    // the four that break the pattern
+    expect(tenantContainerName(slug, 'api-gw')).toBe(`${slug}-envoy`)
+    expect(tenantContainerName(slug, 'functions')).toBe(`${slug}-edge-functions`)
+    expect(tenantContainerName(slug, 'supavisor')).toBe(`${slug}-pooler`)
+    expect(tenantContainerName(slug, 'realtime')).toBe(`realtime-dev.${slug}-realtime`)
   })
 })
 
