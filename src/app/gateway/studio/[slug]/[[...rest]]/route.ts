@@ -68,12 +68,27 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
   const query = request.nextUrl.searchParams.toString()
   if (query) target.search = `?${query}`
 
+  // Forward a deliberate allowlist, not "everything except host".
+  //
+  // The old code copied every browser header through. The gateway template matches SOME routes on
+  // headers, so an unrelated browser header could select a different route than the path implies —
+  // which is how this endpoint returned `403 RBAC: access denied` for a request a plain curl served
+  // fine. A fixed list removes that whole class of surprise, and stops leaking the panel's own
+  // cookies and auth headers to a tenant's container.
+  const FORWARDED = [
+    'accept',
+    'accept-language',
+    'content-type',
+    'range',
+    'if-match',
+    'if-none-match',
+    'if-modified-since',
+  ]
   const headers = new Headers()
-  request.headers.forEach((value, key) => {
-    const k = key.toLowerCase()
-    if (k === 'host' || k === 'content-length' || k === 'connection') return
-    headers.set(key, value)
-  })
+  for (const name of FORWARDED) {
+    const value = request.headers.get(name)
+    if (value) headers.set(name, value)
+  }
   headers.set('host', gatewayHost)
 
   // Studio sits behind the gateway's basic-auth filter. The panel session is the single
