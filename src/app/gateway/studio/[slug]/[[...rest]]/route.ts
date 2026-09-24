@@ -48,10 +48,23 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
   }
 
   const envMap = Object.fromEntries(project.envVars.map((e) => [e.key, e.value]))
-  const studioPort = envMap.STUDIO_PORT || '3000'
+
+  // Studio is reached through the project's SHARED gateway listener (ADR-0003), not a port of its
+  // own. Two things the old code got wrong and this fixes:
+  //
+  //   1. It targeted STUDIO_PORT, which the template writes into .env but nothing ever publishes —
+  //      so this route could never connect, for any project, before or after the cutover.
+  //   2. It set `host: <slug>-studio`. The per-project envoy accepted `domains: ['*']` so that
+  //      worked; the shared gateway matches the tenant by its PUBLIC host, so that Host would
+  //      match no listener and be rejected.
+  //
+  // GW_HTTP_PORT is the host port of this tenant's listener on the shared gateway, and
+  // GW_PUBLIC_HOST is the host it answers for. Both are written per project at creation.
+  const gatewayPort = envMap.GW_HTTP_PORT || envMap.STUDIO_PORT || '3000'
+  const gatewayHost = envMap.GW_PUBLIC_HOST || `${slug}.localhost`
 
   const upstreamPath = rest && rest.length ? `/${rest.join('/')}` : '/'
-  const target = new URL(upstreamPath, `http://${HOST_GATEWAY}:${studioPort}`)
+  const target = new URL(upstreamPath, `http://${HOST_GATEWAY}:${gatewayPort}`)
   const query = request.nextUrl.searchParams.toString()
   if (query) target.search = `?${query}`
 
@@ -61,7 +74,13 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
     if (k === 'host' || k === 'content-length' || k === 'connection') return
     headers.set(key, value)
   })
-  headers.set('host', `${slug}-studio`)
+  headers.set('host', gatewayHost)
+
+  // Studio sits behind the gateway's basic-auth filter. The panel session is the single
+  // authenticated entry point (see the file header), so supply that credential here rather than
+  // making the user log in twice. Unset -> Studio prompts for itself.
+  const gatewayBasicAuth = process.env.SHARED_GATEWAY_BASIC_AUTH
+  if (gatewayBasicAuth) headers.set('authorization', `Basic ${gatewayBasicAuth}`)
 
   const init: RequestInit = { method: request.method, headers, redirect: 'manual' }
   if (!['GET', 'HEAD'].includes(request.method)) {
