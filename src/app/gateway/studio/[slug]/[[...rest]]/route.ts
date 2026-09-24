@@ -157,6 +157,36 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
     )
   }
 
+  // Self-healing cold start.
+  //
+  // Studio's services are on demand, so a deep link (`/project/default`) opened while they are
+  // stopped reaches a gateway with no healthy upstream and returns 503. Starting the group only on
+  // the root path would leave that case broken; starting it on every request would run docker on
+  // every asset. So: react to the gateway's own verdict, start the group, wait, and retry once.
+  if (upstream.status === 502 || upstream.status === 503 || upstream.status === 504) {
+    try {
+      const { ENABLED_SERVICES_KEY, applyServiceGroups, parseEnabledGroups, waitForServicesRunning } =
+        await import('@/lib/service-groups')
+      const { tenantContainerName } = await import('@/lib/gateway')
+      const enabled = parseEnabledGroups(envMap[ENABLED_SERVICES_KEY])
+      if (!enabled.includes('dashboard')) {
+        await applyServiceGroups({
+          projectDir: path.join(getProjectsBasePath(), project.slug, 'docker'),
+          groups: [...enabled, 'dashboard'],
+        })
+        await waitForServicesRunning([
+          tenantContainerName(slug, 'studio'),
+          tenantContainerName(slug, 'meta'),
+        ])
+        // One retry, with the same request shape.
+        const retryInit: RequestInit = { ...init }
+        upstream = await fetch(target.toString(), retryInit)
+      }
+    } catch (error) {
+      console.warn('Could not cold-start the dashboard service group:', error)
+    }
+  }
+
   const out = new NextResponse(upstream.body, { status: upstream.status })
   upstream.headers.forEach((value, key) => {
     const k = key.toLowerCase()
