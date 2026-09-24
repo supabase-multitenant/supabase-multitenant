@@ -7,6 +7,7 @@ import { removeProjectTraefikConfig } from './traefik'
 import { getCoreBasePath, getProjectsBasePath } from './paths'
 import { FUNCTIONS_ENV_FILE, ensureFunctionsEnvFile, namespaceContainerNames } from './compose'
 import { serializeEnvFile, validateFunctionSecrets } from './function-secrets'
+import { mintProjectKeys } from './supabase-jwt'
 
 const execAsync = promisify(exec)
 
@@ -20,18 +21,10 @@ function generateRandomString(length: number): string {
   return result
 }
 
-function generateJWT(role: 'anon' | 'service_role', timestamp: number): string {
-  // Generate a simple JWT-like token (for demo purposes)
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
-  const payload = Buffer.from(JSON.stringify({
-    role,
-    iss: 'supabase',
-    iat: Math.floor(timestamp / 1000),
-    exp: Math.floor(timestamp / 1000) + (365 * 24 * 60 * 60) // 1 year
-  })).toString('base64url')
-  const signature = generateRandomString(43) // Mock signature
-  return `${header}.${payload}.${signature}`
-}
+// Project API keys are minted in `supabase-jwt.ts`, where they are signed with the project's JWT
+// secret and covered by tests. The previous inline helper produced a placeholder signature
+// (`generateRandomString(43) // Mock signature`) that no service could verify, which made the Data
+// API unusable for every project the panel created.
 
 // Pre-flight checks for Docker deployment
 async function checkDockerPrerequisites() {
@@ -220,12 +213,21 @@ export async function createProject(
 
     // Generate unique default port values to prevent conflicts
     const basePort = 8000 + (timestamp % 10000) // Use last 4 digits of timestamp for uniqueness
+
+    // The JWT secret must exist BEFORE the keys, because the keys are signed with it and every
+    // service verifies them against it. Generating the two independently is what left every project
+    // with unusable API keys.
+    const jwtSecret = generateRandomString(64)
+    const { anonKey, serviceRoleKey } = mintProjectKeys(jwtSecret, {
+      now: Math.floor(timestamp / 1000),
+    })
+
     const defaultEnvVars = {
       // Secrets - generated random values
       POSTGRES_PASSWORD: generateRandomString(32),
-      JWT_SECRET: generateRandomString(64),
-      ANON_KEY: generateJWT('anon', timestamp),
-      SERVICE_ROLE_KEY: generateJWT('service_role', timestamp),
+      JWT_SECRET: jwtSecret,
+      ANON_KEY: anonKey,
+      SERVICE_ROLE_KEY: serviceRoleKey,
       DASHBOARD_USERNAME: 'supabase',
       DASHBOARD_PASSWORD: generateRandomString(16),
       SECRET_KEY_BASE: generateRandomString(64),
