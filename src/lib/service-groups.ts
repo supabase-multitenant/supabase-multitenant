@@ -207,3 +207,44 @@ async function compose(
     )
   }
 }
+
+/**
+ * Wait until the named containers are running and, where the compose defines a healthcheck, healthy.
+ *
+ * Without this, starting a group on demand returns to the user before the service can answer, so the
+ * first click on Studio shows a gateway 503 and only the second works. Waiting here turns a cold
+ * start into a single, slightly slower request instead of a visible error.
+ *
+ * Best-effort: a container with no healthcheck counts as ready once running, and the timeout returns
+ * rather than throwing, because failing to observe readiness is not the same as failing to start.
+ */
+export async function waitForServicesRunning(
+  containerNames: string[],
+  timeoutMs = 45000,
+  pollMs = 1500
+): Promise<{ ready: string[]; pending: string[] }> {
+  const deadline = Date.now() + timeoutMs
+  let pending = [...containerNames]
+
+  while (pending.length > 0 && Date.now() < deadline) {
+    const still: string[] = []
+    for (const name of pending) {
+      try {
+        const { stdout } = await execAsync(
+          `docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' ${name}`,
+          { timeout: 10000 }
+        )
+        const [status, health] = stdout.trim().split('|')
+        const ready = status === 'running' && (health === 'healthy' || health === 'none')
+        if (!ready) still.push(name)
+      } catch {
+        // Container not created yet — keep waiting.
+        still.push(name)
+      }
+    }
+    pending = still
+    if (pending.length > 0) await new Promise((r) => setTimeout(r, pollMs))
+  }
+
+  return { ready: containerNames.filter((n) => !pending.includes(n)), pending }
+}

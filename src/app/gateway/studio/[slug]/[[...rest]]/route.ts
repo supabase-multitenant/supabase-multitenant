@@ -76,15 +76,21 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
     // the most expensive optional services, so they stay stopped until somebody actually looks at
     // them. Done here rather than on every asset request so it costs one check per Studio open.
     try {
-      const { ENABLED_SERVICES_KEY, applyServiceGroups, parseEnabledGroups } = await import(
-        '@/lib/service-groups'
-      )
+      const { ENABLED_SERVICES_KEY, applyServiceGroups, parseEnabledGroups, waitForServicesRunning } =
+        await import('@/lib/service-groups')
+      const { tenantContainerName } = await import('@/lib/gateway')
       const enabled = parseEnabledGroups(envMap[ENABLED_SERVICES_KEY])
       if (!enabled.includes('dashboard')) {
         await applyServiceGroups({
           projectDir: path.join(getProjectsBasePath(), project.slug, 'docker'),
           groups: [...enabled, 'dashboard'],
         })
+        // Wait for Studio to answer, otherwise the browser follows the redirect below into a 503 and
+        // the user has to reload. Best-effort: a timeout still redirects.
+        await waitForServicesRunning([
+          tenantContainerName(slug, 'studio'),
+          tenantContainerName(slug, 'meta'),
+        ])
       }
     } catch (error) {
       // Starting Studio must not block reaching Studio; if it fails the proxy below reports it.
