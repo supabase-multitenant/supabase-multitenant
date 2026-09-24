@@ -6,6 +6,7 @@ import { PrismaAdapter } from '@auth/prisma-adapter'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { evaluateOAuthSignIn, isOAuthProviderConfigured } from '@/lib/oauth'
+import { resolveTrustedRedirect } from '@/lib/trusted-redirect'
 
 /**
  * Auth.js (next-auth v5) — see docs/adr/0001-authjs.md
@@ -116,6 +117,21 @@ export const authConfig: NextAuthConfig = {
     },
   },
   callbacks: {
+    /**
+     * Where a signed-in user is sent back to.
+     *
+     * Auth.js's default allows same-origin only and otherwise falls back to the base URL. That is
+     * wrong here: each project's Studio is served on its own hostname
+     * (`<slug>-studio.<platform-domain>`), so signing in from a Studio host was refused the return
+     * trip and dumped the user on the panel — which is why a Studio login ended on the panel with
+     * "This page could not be found".
+     *
+     * `resolveTrustedRedirect` widens the rule to Studio hostnames under this platform's parent
+     * domain and nothing else; see its tests for the lookalike and userinfo cases it refuses.
+     */
+    async redirect({ url, baseUrl }) {
+      return resolveTrustedRedirect(url, baseUrl)
+    },
     /**
      * The invite-only boundary, applied to OAuth.
      *

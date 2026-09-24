@@ -89,11 +89,15 @@ export default function LoginPage() {
       if (result?.error) {
         setError('Invalid email or password')
       } else {
-        const next =
-          typeof window !== 'undefined'
-            ? new URLSearchParams(window.location.search).get('next')
-            : null
-        router.push(next && next.startsWith('/') ? next : '/organizations')
+        const params = new URLSearchParams(window.location.search)
+        const next = params.get('next')
+        // On a project's Studio host, `/organizations` is a panel route that does not exist — it
+        // would be rewritten into the gateway and 404 inside Studio. Only the host root is a valid
+        // landing spot there, so default to it.
+        const onStudioHost =
+          typeof window !== 'undefined' && window.location.hostname.includes('-studio.')
+        const fallback = onStudioHost ? '/' : '/organizations'
+        router.push(next && next.startsWith('/') ? next : fallback)
         router.refresh()
       }
     } catch {
