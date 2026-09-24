@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import path from 'node:path'
 import { validateSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { getProjectsBasePath } from '@/lib/paths'
 
 // App-level Studio gateway. Per-project Studio containers expose no auth of
 // their own; this is the single authenticated entry point. It validates the
@@ -70,6 +72,25 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
   // the browser straight to the project path, keeping it inside this route so every asset URL stays
   // prefix-correct.
   if (!rest || rest.length === 0) {
+    // Opening Studio is what makes the dashboard group wanted (ADR-0003 phase 4): studio + meta are
+    // the most expensive optional services, so they stay stopped until somebody actually looks at
+    // them. Done here rather than on every asset request so it costs one check per Studio open.
+    try {
+      const { ENABLED_SERVICES_KEY, applyServiceGroups, parseEnabledGroups } = await import(
+        '@/lib/service-groups'
+      )
+      const enabled = parseEnabledGroups(envMap[ENABLED_SERVICES_KEY])
+      if (!enabled.includes('dashboard')) {
+        await applyServiceGroups({
+          projectDir: path.join(getProjectsBasePath(), project.slug, 'docker'),
+          groups: [...enabled, 'dashboard'],
+        })
+      }
+    } catch (error) {
+      // Starting Studio must not block reaching Studio; if it fails the proxy below reports it.
+      console.warn('Could not start the dashboard service group:', error)
+    }
+
     return new Response(null, {
       status: 307,
       headers: { location: `/gateway/studio/${slug}/project/default` },
