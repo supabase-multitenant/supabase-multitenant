@@ -308,6 +308,27 @@ describe('cluster references are namespaced per tenant', () => {
     expect(tenantContainerName(slug, 'supavisor')).toBe(`${slug}-pooler`)
     expect(tenantContainerName(slug, 'realtime')).toBe(`realtime-dev.${slug}-realtime`)
   })
+
+  it('accepts the internal authority a Host-less caller must use', () => {
+    // fetch() cannot set Host, so a caller reaching the gateway by IP:port presents
+    // `:authority: 10.0.2.1:<port>`. Without this the listener matches no virtual host and denies.
+    const withAuthority = buildSharedGateway(
+      [
+        { ...TENANTS[0], internalAuthorities: ['10.0.2.1:11130'] },
+        { ...TENANTS[1], internalAuthorities: ['10.0.2.1:11131'] },
+      ],
+      LDS_FRAGMENT
+    )
+    expect(withAuthority.lds).toContain("'10.0.2.1:11130'")
+    expect(withAuthority.lds).toContain("'10.0.2.1:11131'")
+
+    // Each tenant gets only its own authority: the ports are distinct, so this stays isolated.
+    const segments = withAuthority.lds.split('supabase-').slice(1)
+    const first = segments.find((s) => s.includes('aclient'))
+    const second = segments.find((s) => s.includes('bclient'))
+    if (first) expect(first).not.toContain('10.0.2.1:11131')
+    if (second) expect(second).not.toContain('10.0.2.1:11130')
+  })
 })
 
 describe('one listener per tenant, each on its own port', () => {

@@ -69,6 +69,20 @@ export interface TenantGatewayInput {
    */
   internalHost?: string
   /**
+   * Authority strings (`host:port`) this tenant's listener must accept in addition to its public
+   * host.
+   *
+   * This exists because **`fetch` cannot set the `Host` header** — it is a forbidden header in the
+   * fetch spec, and Node's undici silently drops it, deriving `:authority` from the URL instead. So
+   * a caller that reaches the shared gateway by IP:port (the panel, which is not on the tenant's
+   * network) can never present the tenant's public host. Envoy then matches no virtual host and the
+   * RBAC filter denies with `matched policy none`.
+   *
+   * Each tenant's listener is on its own port, so accepting `10.0.2.1:<that tenant's port>` stays
+   * tenant-specific: another tenant's traffic arrives on a different port and cannot match here.
+   */
+  internalAuthorities?: string[]
+  /**
    * This tenant's own keys. Required: the listener template embeds `$ANON_KEY` and friends in its
    * JWT/RBAC filters, and in a shared gateway those placeholders must be resolved **per tenant**.
    * Leaving them unresolved would either bake one tenant's key into every virtual host or ship
@@ -519,7 +533,13 @@ export function buildSharedListener(
     // Internal (service-to-service) traffic addresses the gateway by name on a per-tenant port,
     // so the tenant's own listener must accept that host too — e.g. `drill-…-gw:8102`. It is
     // tenant-specific and port-specific, so it cannot match a sibling's listener.
-    const extraDomains = tenant.internalHost ? [`${tenant.internalHost}:${port}`] : []
+    //
+    // `internalAuthorities` covers the other internal caller: anything reaching the gateway by
+    // IP:port (the panel), which cannot present a Host header at all because fetch forbids it.
+    const extraDomains = [
+      ...(tenant.internalHost ? [`${tenant.internalHost}:${port}`] : []),
+      ...(tenant.internalAuthorities ?? []),
+    ]
     fragment = restrictVirtualHostDomains(fragment, tenant.host, extraDomains)
 
     const wildcards = findWildcardDomains(fragment)

@@ -64,6 +64,18 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
   const gatewayHost = envMap.GW_PUBLIC_HOST || `${slug}.localhost`
 
   const upstreamPath = rest && rest.length ? `/${rest.join('/')}` : '/'
+
+  // Studio answers `/` itself with a redirect to `/project/<default>`, but that redirect loses the
+  // panel's `/gateway/studio/<slug>` prefix on the return trip, so the browser lands on a 404. Send
+  // the browser straight to the project path, keeping it inside this route so every asset URL stays
+  // prefix-correct.
+  if (!rest || rest.length === 0) {
+    return new Response(null, {
+      status: 307,
+      headers: { location: `/gateway/studio/${slug}/project/default` },
+    })
+  }
+
   const target = new URL(upstreamPath, `http://${HOST_GATEWAY}:${gatewayPort}`)
   const query = request.nextUrl.searchParams.toString()
   if (query) target.search = `?${query}`
