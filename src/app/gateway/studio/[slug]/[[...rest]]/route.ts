@@ -51,6 +51,23 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
 
   const envMap = Object.fromEntries(project.envVars.map((e) => [e.key, e.value]))
 
+  // Studio must be served at a HOST ROOT, not a path prefix.
+  //
+  // Its asset and route URLs are absolute (`/_next/...`, `/project/...`), so a path-prefixed URL
+  // like /gateway/studio/<slug>/ loads the HTML and then fetches its assets from the panel root,
+  // where they do not exist — the page renders as a black screen. The supported entry point is the
+  // project's Studio subdomain, where Traefik injects `x-studio-gateway` and middleware.ts rewrites
+  // internally so the browser stays at the host root.
+  //
+  // So if someone lands here by path (no injected header), send them to the host that works rather
+  // than serving a page that cannot render.
+  const viaStudioHost = Boolean(request.headers.get('x-studio-gateway'))
+  const studioHost = envMap.GW_STUDIO_HOST
+  if (!viaStudioHost && studioHost) {
+    const suffix = rest && rest.length ? `/${rest.join('/')}` : '/'
+    return NextResponse.redirect(`https://${studioHost}${suffix}`, 308)
+  }
+
   // Studio is reached through the project's SHARED gateway listener (ADR-0003), not a port of its
   // own. Two things the old code got wrong and this fixes:
   //
@@ -99,7 +116,18 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
 
     return new Response(null, {
       status: 307,
-      headers: { location: `/gateway/studio/${slug}/project/default` },
+      // Host-aware target.
+      //
+      // On the Studio host the browser must stay at the HOST ROOT — that is the entire point of
+      // routing Studio through a subdomain, because Studio's asset and route URLs are absolute.
+      // Redirecting to the path form here put the browser on
+      // `https://<slug>-studio.<domain>/gateway/studio/<slug>/project/default`, where Studio's own
+      // client-side routing and absolute paths no longer line up: the page loads but never paints,
+      // i.e. the black screen.
+      //
+      // Reached by path instead (no injected header), the host root is the correct destination, and
+      // the top-of-handler redirect already sent that case away.
+      headers: { location: viaStudioHost ? '/project/default' : `/gateway/studio/${slug}/project/default` },
     })
   }
 

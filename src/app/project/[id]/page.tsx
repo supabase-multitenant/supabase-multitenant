@@ -111,6 +111,19 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const panelHost =
     process.env.AUTH_URL?.replace(/^https?:\/\//, '').replace(/\/+$/, '') ?? null
 
+  // Studio is served on a per-project host (its asset URLs are absolute, so it cannot live under a
+  // path prefix). A project with a custom Studio domain uses that; otherwise fall back to the
+  // platform-generated host recorded at creation, so the dashboard always offers a working link
+  // instead of hiding it behind a domain the user has not configured.
+  const generatedStudioHost =
+    (
+      await prisma.projectEnvVar.findFirst({
+        where: { projectId: id, key: 'GW_STUDIO_HOST' },
+        select: { value: true },
+      })
+    )?.value ?? null
+  const studioHost = project.studioDomain || generatedStudioHost
+
   return (
     <div className="min-h-screen bg-background">
       <AppTopbar
@@ -131,7 +144,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           region: project.region,
           domain: project.domain,
           domainVerified: project.domainVerified,
-          studioDomain: project.studioDomain,
+          studioDomain: studioHost,
           createdAt: project.createdAt.toISOString(),
         }}
         organization={organization}
