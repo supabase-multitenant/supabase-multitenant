@@ -5,7 +5,7 @@ import { join, relative, sep } from 'path'
 /**
  * A guard rail, not a formality.
  *
- * We hold a commercial licence for MakerKit's Supabase Turbo kit and use it as a
+ * We hold a commercial licence for MK's Supabase Turbo kit and use it as a
  * *reference* only — its EULA forbids distributing its code, and this project is
  * open source. The rule is "take the behaviour, write our own expression".
  *
@@ -14,7 +14,7 @@ import { join, relative, sep } from 'path'
  * mechanical. If any of these identifiers appear in our code, something was
  * copied rather than re-expressed, and the build fails.
  *
- * See docs/reference/makerkit-notes.md for the full protocol.
+ * See docs/reference/mk-notes.md for the full protocol.
  */
 
 const ROOT = process.cwd()
@@ -24,13 +24,15 @@ const SCAN_DIRS = ['src', 'prisma', 'tests']
 const SCAN_FILES = ['package.json', 'next.config.js', 'tailwind.config.js', 'tsconfig.json']
 
 /**
- * Identifiers that are only present if MakerKit source was taken.
+ * Identifiers that are only present if MK source was taken. These literals are the
+ * detection mechanism itself -- a rule has to name what it detects -- so the real name survives
+ * here and nowhere else.
  *
  * Deliberately specific: generic words like "role", "organization" or
  * "permission" are ours too and must not be flagged.
  */
 const FINGERPRINTS: Array<{ pattern: RegExp; why: string }> = [
-  { pattern: /makerkit/i, why: 'MakerKit naming' },
+  { pattern: /makerkit/i, why: 'MK naming' },
   { pattern: /next-supabase-saas-kit/i, why: 'upstream repository name' },
   { pattern: /@kit\//, why: 'their internal package scope (e.g. @kit/shared)' },
   { pattern: /keystatic/i, why: "their CMS dependency, which we don't use" },
@@ -72,7 +74,7 @@ describe('no upstream boilerplate code', () => {
     expect(files.length).toBeGreaterThan(50)
   })
 
-  it('contains no MakerKit identifiers in our code', () => {
+  it('contains no MK identifiers in our code', () => {
     const offences: string[] = []
 
     for (const file of candidateFiles()) {
@@ -91,7 +93,7 @@ describe('no upstream boilerplate code', () => {
     expect(offences, `Copied upstream identifiers found:\n${offences.join('\n')}`).toEqual([])
   })
 
-  it('lists no MakerKit packages as dependencies', () => {
+  it('lists no MK packages as dependencies', () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
     const deps = Object.keys({
       ...(pkg.dependencies ?? {}),

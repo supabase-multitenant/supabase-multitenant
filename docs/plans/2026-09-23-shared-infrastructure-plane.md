@@ -61,7 +61,7 @@ different credentials, and cross-tenant access is refused.
 - Single Studio in the shared plane bound to the shared `meta`.
 - Each project appears as a project in the dashboard; opening one must not expose another.
 - This is the capability Supabase keeps closed and where `supabase-studio-multi-head` is the
-  reference — study its approach for studying only, per `docs/reference/makerkit-notes.md`
+  reference — study its approach for studying only, per `docs/reference/MK-notes.md`
   discipline. **No third-party code enters this repo.**
 
 **Done when:** a signed-in panel user with access to one project cannot enumerate or open another
