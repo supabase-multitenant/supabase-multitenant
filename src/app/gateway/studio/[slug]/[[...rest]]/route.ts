@@ -51,6 +51,20 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
 
   const envMap = Object.fromEntries(project.envVars.map((e) => [e.key, e.value]))
 
+  // Note that somebody is here, on every request rather than only on the entry point.
+  //
+  // The idle reaper stops this project's dashboard group once nobody has looked for a while. If
+  // only the first page view counted, a session that stayed open — the normal case, Studio is used
+  // for minutes at a time — would look abandoned after the idle window and Studio would be stopped
+  // underneath the person using it.
+  try {
+    const { recordDashboardUse } = await import('@/lib/idle-reaper-runtime')
+    recordDashboardUse(project.id)
+  } catch (error) {
+    // Bookkeeping must never be the reason a request fails.
+    console.warn('Could not record Studio use:', error)
+  }
+
   // Studio must be served at a HOST ROOT, not a path prefix.
   //
   // Its asset and route URLs are absolute (`/_next/...`, `/project/...`), so a path-prefixed URL
@@ -97,18 +111,22 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
         await import('@/lib/service-groups')
       const { tenantContainerName } = await import('@/lib/gateway')
       const enabled = parseEnabledGroups(envMap[ENABLED_SERVICES_KEY])
-      if (!enabled.includes('dashboard')) {
-        await applyServiceGroups({
-          projectDir: path.join(getProjectsBasePath(), project.slug, 'docker'),
-          groups: [...enabled, 'dashboard'],
-        })
-        // Wait for Studio to answer, otherwise the browser follows the redirect below into a 503 and
-        // the user has to reload. Best-effort: a timeout still redirects.
-        await waitForServicesRunning([
-          tenantContainerName(slug, 'studio'),
-          tenantContainerName(slug, 'meta'),
-        ])
-      }
+
+      // Ensure the group is up — unconditionally, and NOT only when `dashboard` is missing from the
+      // enabled set. The reaper stops an idle dashboard group, so "enabled" can no longer be read as
+      // "running": with that condition, a project that deliberately enabled the dashboard would have
+      // its Studio stopped after 30 idle minutes and could never start it again. Applying the group
+      // is idempotent, and compose treats an already-running service as a no-op.
+      await applyServiceGroups({
+        projectDir: path.join(getProjectsBasePath(), project.slug, 'docker'),
+        groups: [...enabled, 'dashboard'],
+      })
+      // Wait for Studio to answer, otherwise the browser follows the redirect below into a 503 and
+      // the user has to reload. Best-effort: a timeout still redirects.
+      await waitForServicesRunning([
+        tenantContainerName(slug, 'studio'),
+        tenantContainerName(slug, 'meta'),
+      ])
     } catch (error) {
       // Starting Studio must not block reaching Studio; if it fails the proxy below reports it.
       console.warn('Could not start the dashboard service group:', error)
