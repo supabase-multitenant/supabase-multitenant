@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { evaluateOAuthSignIn, isOAuthProviderConfigured } from '@/lib/oauth'
 import { resolveTrustedRedirect } from '@/lib/trusted-redirect'
+import { resolveCookieDomain } from '@/lib/cookie-domain'
 
 /**
  * Auth.js (next-auth v5) — see docs/adr/0001-authjs.md
@@ -23,6 +24,19 @@ const secret =
   process.env.AUTH_SECRET ||
   process.env.NEXTAUTH_SECRET ||
   process.env.SERVICE_PASSWORD_NEXTAUTHSECRET
+
+/**
+ * The parent domain the session cookie is scoped to, or null for host-only.
+ *
+ * Derived from our own URL so any deployment gets the right cookie without configuration, and
+ * overridable with AUTH_COOKIE_DOMAIN. Resolved once at module load: it depends on configuration,
+ * not on the request, and recomputing it per request would only invite the cookie to change shape
+ * mid-session.
+ */
+const sessionCookieDomain = resolveCookieDomain({
+  authUrl: process.env.AUTH_URL || process.env.NEXTAUTH_URL,
+  explicit: process.env.AUTH_COOKIE_DOMAIN,
+})
 
 // Only advertise GitHub when it is actually configured.
 const providers: NextAuthConfig['providers'] = [
@@ -113,6 +127,13 @@ export const authConfig: NextAuthConfig = {
         // Secure is decided per-request via the proxy header; Auth.js only sets
         // the cookie over HTTPS so a plain `http://ip:3000` dev access still works.
         secure: process.env.NODE_ENV === 'production',
+        // Scope the session to the platform's parent domain so it is valid on every project's
+        // Studio host too. Without this the cookie is host-only, and clicking "Open Studio" — a
+        // sibling hostname — arrives unauthenticated and asks a signed-in user to sign in again.
+        // Moving between the panel and any project's Studio is supposed to feel like one product;
+        // this is the line that makes it one session. See src/lib/cookie-domain.ts for what it
+        // refuses and why, and AUTH_COOKIE_DOMAIN to override it.
+        ...(sessionCookieDomain ? { domain: sessionCookieDomain } : {}),
       },
     },
   },
