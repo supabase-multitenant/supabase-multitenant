@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""Prove the control-plane row policies enforce. Run from the host that holds the panel container:
-
-    python3 prisma/rls/verify-rls.py
-
-Requires the policies to have been applied first:
-
-    docker exec -i <db-container> psql -U <user> -d supabase_multitenant \
-      -v ON_ERROR_STOP=1 < prisma/rls/2026-09-25-control-plane-rls.sql
-
-Exits non-zero if any check fails. See issue #133.
-"""
 """Prove the control-plane row policies actually enforce.
 
 Queried as the restricted role, with the request's user set the way the panel will set it:
@@ -116,6 +105,19 @@ for table, rows in none.items():
 # And confirm a privileged connection is unaffected, so the running panel cannot break from this.
 priv = sql("select count(*) from organizations")
 check("privileged (panel) connection still sees everything", priv != ['0'], f"{priv} org(s)")
+
+print("\n  structural invariant — every policied table must have RLS ENABLED:")
+# A policy on a table without row level security is inert, and silently so: the table keeps
+# returning every row while appearing to be protected. This check exists because that exact mistake
+# was made on `users` and only a behavioural test caught it.
+gapped = sql("""
+  select c.relname
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity = false
+    and exists (select 1 from pg_policy p where p.polrelid = c.oid)""")
+check("no table has policies without row level security enabled", gapped == [],
+      "inert on: " + ", ".join(gapped) if gapped else "none")
 
 print(f"\n  {sum(results)}/{len(results)} checks passed")
 raise SystemExit(0 if all(results) else 1)
