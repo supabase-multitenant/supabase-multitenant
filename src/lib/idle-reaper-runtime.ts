@@ -23,11 +23,7 @@ import { promisify } from 'node:util'
 import { prisma } from '@/lib/db'
 import { tenantContainerName } from '@/lib/gateway'
 import { getProjectsBasePath } from '@/lib/paths'
-import {
-  ENABLED_SERVICES_KEY,
-  applyServiceGroups,
-  parseEnabledGroups,
-} from '@/lib/service-groups'
+import { composeServicesFor, stopServices } from '@/lib/service-groups'
 import {
   DEFAULT_IDLE_MS,
   EPHEMERAL_GROUPS,
@@ -58,20 +54,6 @@ async function containerIsRunning(name: string): Promise<boolean> {
   } catch {
     // No such container, or docker is unreachable. Either way it is not running.
     return false
-  }
-}
-
-async function enabledGroupsFor(projectId: string): Promise<string[]> {
-  const rows = await prisma.projectEnvVar.findMany({
-    where: { projectId, key: ENABLED_SERVICES_KEY },
-    select: { value: true },
-  })
-  try {
-    return parseEnabledGroups(rows[0]?.value)
-  } catch {
-    // A stored value with an unknown group is the project's problem to fix in the UI; it must not
-    // stop us from reaping other projects, and guessing a set here could stop a wanted service.
-    return ['core']
   }
 }
 
@@ -113,17 +95,19 @@ export function createDeps(): IdleReaperDeps {
       })
       if (!project) return
 
-      const enabled = await enabledGroupsFor(projectId)
-      // Removing the reaped groups from the wanted set is what stops them: applying the remaining
-      // set stops everything else, and `servicesToStop` will never include core.
-      const wanted = enabled.filter((g) => !groups.includes(g))
-
-      await applyServiceGroups({
-        projectDir: path.join(getProjectsBasePath(), project.slug, 'docker'),
-        groups: wanted,
+      // Stop ONLY the group's own services. Not `applyServiceGroups`: that would bring the whole
+      // project in line with its declared service set and stop anything undeclared as a side effect
+      // — which, on the live box, meant `functions` being stopped on every project because it was
+      // not in `ENABLED_SERVICES`. The reaper must be incapable of stopping anything but the
+      // ephemeral group it decided on, so the surface it can touch is exactly these compose
+      // services.
+      const services = composeServicesFor(groups)
+      await stopServices(
+        path.join(getProjectsBasePath(), project.slug, 'docker'),
+        services,
         // A reap is background housekeeping; it must never hold a request open or pile up.
-        timeoutMs: 60000,
-      })
+        60000
+      )
 
       // Forget the timestamps so a stopped group cannot be "stopped again" on the next pass.
       for (const group of groups) dashboardUsage.record(projectId, group, 0)

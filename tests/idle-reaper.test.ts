@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { SERVICE_GROUPS } from '@/lib/service-groups'
 import {
   DEFAULT_IDLE_MS,
   EPHEMERAL_GROUPS,
@@ -49,6 +50,18 @@ describe('which groups may be stopped', () => {
 
   it('is not accidentally widened by adding a group name', () => {
     expect([...EPHEMERAL_GROUPS]).toEqual(['dashboard'])
+  })
+
+  it('can only ever touch studio and meta — never a wanted service', () => {
+    // Regression guard for a real bug caught on the live box: the reaper re-applied the project's
+    // declared service set to stop the idle dashboard, and that stopped `functions` on every
+    // project as a side effect, because `functions` was not in the declared set. Stopping a
+    // customer's edge functions to save memory is exactly the failure this must be incapable of.
+    const reachable = EPHEMERAL_GROUPS.flatMap((group) => SERVICE_GROUPS[group])
+    expect(reachable.sort()).toEqual(['meta', 'studio'])
+    for (const forbidden of ['db', 'auth', 'rest', 'realtime', 'storage', 'functions', 'imgproxy']) {
+      expect(reachable).not.toContain(forbidden)
+    }
   })
 
   it('returns only the eligible group when idle and ineligible groups are mixed in', () => {

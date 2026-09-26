@@ -102,6 +102,27 @@ export function composeServicesFor(groups: string[]): string[] {
   return [...new Set(out)]
 }
 
+/**
+ * Stop exactly these services, and nothing else.
+ *
+ * Deliberately narrower than `applyServiceGroups`: that function brings a project in line with its
+ * whole declared service set, so it stops everything not declared — which is right when the user is
+ * editing that set and wrong for any caller that only means to stop one thing. The idle reaper is
+ * such a caller: re-applying the declared set to stop an idle dashboard also stopped `functions` on
+ * every project, because `functions` was not in the declared set. The reaper's job is to stop the
+ * dashboard group, so it must be unable to stop anything but the dashboard group.
+ */
+export async function stopServices(
+  projectDir: string,
+  services: string[],
+  timeoutMs = 60000
+): Promise<string[]> {
+  const present = await composeServicesPresent(projectDir, timeoutMs)
+  const target = services.filter((s) => present.has(s))
+  if (target.length > 0) await compose(projectDir, ['stop', ...target], timeoutMs)
+  return target
+}
+
 /** The compose services that should NOT be running for a given enabled set. */
 export function servicesToStop(enabledGroups: string[]): string[] {
   // Core is forced into the wanted set even if the caller forgot it. Without this,
