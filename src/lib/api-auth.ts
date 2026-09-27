@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from './db'
 import { validateSession } from './auth'
+import { SESSION_COOKIE_NAME } from './session-cookie'
 
 /**
  * Shared session + project-access helpers for API routes.
@@ -14,7 +15,7 @@ import { validateSession } from './auth'
 export type Session = Awaited<ReturnType<typeof validateSession>>
 
 export async function getSession(request: NextRequest): Promise<Session> {
-  const token = request.cookies.get('session')?.value
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value
   if (!token) return null
   return validateSession(token)
 }

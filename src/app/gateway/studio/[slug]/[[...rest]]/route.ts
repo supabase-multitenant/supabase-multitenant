@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'node:path'
 import { validateSession } from '@/lib/auth'
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 import { prisma } from '@/lib/db'
 import { getProjectsBasePath } from '@/lib/paths'
 
@@ -36,7 +37,7 @@ async function handle(request: NextRequest, ctx: RouteContext): Promise<Response
   const { slug, rest } = await ctx.params
 
   // App-level auth gate (the panel's own session).
-  const token = request.cookies.get('session')?.value
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value
   if (!token || !(await validateSession(token))) {
     return loginRedirect(request, request.nextUrl.pathname)
   }

@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db'
 import { evaluateOAuthSignIn, isOAuthProviderConfigured } from '@/lib/oauth'
 import { resolveTrustedRedirect } from '@/lib/trusted-redirect'
 import { resolveCookieDomain } from '@/lib/cookie-domain'
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 
 /**
  * Auth.js (next-auth v5) — see docs/adr/0001-authjs.md
@@ -119,7 +120,7 @@ export const authConfig: NextAuthConfig = {
   providers,
   cookies: {
     sessionToken: {
-      name: 'session',
+      name: SESSION_COOKIE_NAME,
       options: {
         httpOnly: true,
         sameSite: 'lax',

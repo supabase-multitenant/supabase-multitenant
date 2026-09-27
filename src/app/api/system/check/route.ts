@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateSession } from '@/lib/auth'
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -60,7 +61,7 @@ async function checkInternetConnectivity(): Promise<boolean> {
 
 export async function GET(request: NextRequest) {
   try {
-    const sessionToken = request.cookies.get('session')?.value
+    const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value
     
     if (!sessionToken) {
       return NextResponse.json(
