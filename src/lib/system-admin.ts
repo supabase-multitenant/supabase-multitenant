@@ -24,8 +24,22 @@
  * token's claim as a display hint at most.
  */
 
-/** The only value of `users.role` that confers system administration. */
-export const SYSTEM_ADMIN_ROLE = 'admin'
+/**
+ * The values of `users.role` that confer system administration.
+ *
+ * `owner` is the platform's own top role — the account that founded it — and `admin` is the
+ * narrower operator role. Both see the system view; an owner locked out of the platform they own
+ * is a bug rather than a policy. `member` confers nothing.
+ *
+ * Note that `owner` and `admin` are *also* organization role names, from
+ * `organization_members.role`. They are a different column in a different table, and this function
+ * must only ever be given `users.role` — passing an organization role here would promote every
+ * organization's owner to platform administration.
+ */
+export const SYSTEM_ADMIN_ROLES = ['owner', 'admin'] as const
+
+/** The narrowest value that confers system administration. */
+export const SYSTEM_ADMIN_ROLE: (typeof SYSTEM_ADMIN_ROLES)[number] = 'admin'
 
 /** Organization roles, listed so it is obvious they are a different namespace entirely. */
 export const ORGANIZATION_ROLES = ['viewer', 'developer', 'admin', 'owner'] as const
@@ -47,7 +61,8 @@ export class NotSystemAdminError extends Error {
  * organization role that happens to share a name — is not.
  */
 export function isSystemAdmin(role: string | null | undefined): boolean {
-  return typeof role === 'string' && role.trim().toLowerCase() === SYSTEM_ADMIN_ROLE
+  if (typeof role !== 'string') return false
+  return (SYSTEM_ADMIN_ROLES as readonly string[]).includes(role.trim().toLowerCase())
 }
 
 /** Throw unless the role is a system administrator. */

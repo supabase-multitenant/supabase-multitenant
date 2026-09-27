@@ -4,13 +4,17 @@ import {
   NotSystemAdminError,
   ORGANIZATION_ROLES,
   SYSTEM_ADMIN_ROLE,
+  SYSTEM_ADMIN_ROLES,
   assertSystemAdmin,
   isSystemAdmin,
 } from '@/lib/system-admin'
 
 describe('who is a system administrator', () => {
-  it('is exactly the system role', () => {
-    expect(isSystemAdmin(SYSTEM_ADMIN_ROLE)).toBe(true)
+  it('is the platform owner and the operator role, and nothing narrower', () => {
+    for (const role of SYSTEM_ADMIN_ROLES) {
+      expect(isSystemAdmin(role)).toBe(true)
+    }
+    expect(isSystemAdmin('owner')).toBe(true)
     expect(isSystemAdmin('admin')).toBe(true)
   })
 
@@ -18,16 +22,21 @@ describe('who is a system administrator', () => {
     expect(isSystemAdmin('Admin')).toBe(true)
     expect(isSystemAdmin('ADMIN')).toBe(true)
     expect(isSystemAdmin('  admin  ')).toBe(true)
+    expect(isSystemAdmin('Owner')).toBe(true)
+    expect(isSystemAdmin('  OWNER  ')).toBe(true)
   })
 
-  it('is NOT granted by any organization role', () => {
-    // The naming collision that matters: `admin` is a legitimate *organization* role. That comes
-    // from `organization_members.role`, a different column, and it must never read as system
-    // authority. Only `owner` in one organization is not a step towards seeing every organization.
+  it('is NOT granted by an organization role that is not also a system role', () => {
+    // The naming collision that matters: `admin` and `owner` are legitimate *organization* roles
+    // too. Those live in `organization_members.role` — a different column in a different table —
+    // and the same spelling is why the caller must pass `users.role` and nothing else. The roles
+    // below exist only as organization roles and must never read as system authority.
     for (const role of ORGANIZATION_ROLES) {
-      if (role === 'admin') continue // covered above: same spelling, different column
+      if ((SYSTEM_ADMIN_ROLES as readonly string[]).includes(role)) continue
       expect(isSystemAdmin(role)).toBe(false)
     }
+    expect(isSystemAdmin('viewer')).toBe(false)
+    expect(isSystemAdmin('developer')).toBe(false)
   })
 
   it('refuses everything else', () => {
@@ -55,14 +64,14 @@ describe('asserting it', () => {
 
   it('throws a 403-shaped error for everyone else', () => {
     try {
-      assertSystemAdmin('owner')
+      assertSystemAdmin('member')
       throw new Error('should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(NotSystemAdminError)
       expect((error as NotSystemAdminError).status).toBe(403)
       // The message must name what was actually seen, otherwise every refusal looks identical in
       // the logs and a misconfiguration is invisible.
-      expect((error as Error).message).toContain('owner')
+      expect((error as Error).message).toContain('member')
     }
   })
 
