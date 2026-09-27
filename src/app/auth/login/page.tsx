@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { BookOpen, Chrome, Eye, EyeOff, Github } from 'lucide-react'
 import { BrandLogo } from '@/components/brand'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { DEFAULT_LANDING, requestedPath } from '@/lib/landing'
 
 /**
  * Why an OAuth sign-in was refused, in words the person can act on.
@@ -96,8 +97,23 @@ export default function LoginPage() {
         // landing spot there, so default to it.
         const onStudioHost =
           typeof window !== 'undefined' && window.location.hostname.includes('-studio.')
-        const fallback = onStudioHost ? '/' : '/organizations'
-        router.push(next && next.startsWith('/') ? next : fallback)
+        let destination = requestedPath(next) ?? DEFAULT_LANDING
+        if (!onStudioHost && requestedPath(next) === null) {
+          // Which default depends on the account: an ordinary member belongs in their organizations,
+          // a platform administrator in the system view. The server decides, because it re-reads the
+          // role from the database — and it decides from the session that was just created. If the
+          // request fails the member default is the safe answer: it is the page everyone can open.
+          try {
+            const res = await fetch('/api/me/landing')
+            if (res.ok) {
+              const body = (await res.json()) as { destination?: string }
+              destination = requestedPath(body.destination) ?? DEFAULT_LANDING
+            }
+          } catch {
+            destination = DEFAULT_LANDING
+          }
+        }
+        router.push(onStudioHost ? '/' : destination)
         router.refresh()
       }
     } catch {
