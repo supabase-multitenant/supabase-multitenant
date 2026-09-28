@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { AI_SETTING_KEYS, findProvider, needsModelRewrite } from '@/lib/ai-providers'
-import { prisma } from '@/lib/db'
+import { findProvider, needsModelRewrite } from '@/lib/ai-providers'
+import { readAiSettings } from '@/lib/ai-settings'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,18 +49,11 @@ export async function POST(
     return NextResponse.json({ error: { message: 'Missing API key' } }, { status: 401 })
   }
 
-  const rows = await prisma.projectEnvVar.findMany({
-    where: {
-      projectId,
-      key: { in: [AI_SETTING_KEYS.provider, AI_SETTING_KEYS.apiKey, AI_SETTING_KEYS.baseUrl, AI_SETTING_KEYS.model, AI_SETTING_KEYS.token] },
-    },
-    select: { key: true, value: true },
-  })
-  const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]))
+  const settings = await readAiSettings(projectId)
 
-  const token = settings[AI_SETTING_KEYS.token] ?? ''
-  const apiKey = settings[AI_SETTING_KEYS.apiKey] ?? ''
-  if (!token || !apiKey) {
+  const token = settings.token
+  const apiKey = settings.apiKey
+  if (!token || !apiKey || !settings.provider) {
     return NextResponse.json(
       { error: { message: 'No AI provider is configured for this project.' } },
       { status: 409 }
@@ -72,9 +65,9 @@ export async function POST(
     return NextResponse.json({ error: { message: 'Invalid API key' } }, { status: 401 })
   }
 
-  const providerId = settings[AI_SETTING_KEYS.provider] ?? 'openai'
+  const providerId = settings.provider
   const provider = findProvider(providerId)
-  const baseUrl = (settings[AI_SETTING_KEYS.baseUrl] || provider?.baseUrl || '').replace(/\/+$/, '')
+  const baseUrl = (settings.baseUrl || provider?.baseUrl || '').replace(/\/+$/, '')
   if (!baseUrl) {
     return NextResponse.json(
       { error: { message: `No base URL configured for provider "${providerId}".` } },
@@ -95,7 +88,7 @@ export async function POST(
   }
 
   // The whole point: Studio sends a model id the provider does not recognise.
-  const configuredModel = settings[AI_SETTING_KEYS.model] ?? ''
+  const configuredModel = settings.model
   if (needsModelRewrite(providerId) && configuredModel) {
     payload.model = configuredModel
   }

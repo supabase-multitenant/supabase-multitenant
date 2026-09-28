@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import {
@@ -8,6 +9,7 @@ import {
   studioAiEnv,
   validateAiSettings,
 } from '@/lib/ai-providers'
+import { ensureStudioAiEnv } from '@/lib/compose'
 import { prisma } from '@/lib/db'
 import { mergeEnvFile } from '@/lib/env-file'
 import { getProjectsBasePath } from '@/lib/paths'
@@ -194,6 +196,18 @@ async function applyToStudio(
 
   const dockerDir = path.join(getProjectsBasePath(), project.slug, 'docker')
   await mergeEnvFile(path.join(dockerDir, '.env'), entries)
+
+  // Projects created before this feature have a compose whose studio service takes no base URL, so
+  // the variable would land in .env and never reach the container. Ensuring it here — idempotently —
+  // fixes existing projects the moment their AI settings are saved.
+  const composePath = path.join(dockerDir, 'docker-compose.yml')
+  try {
+    const compose = await fs.readFile(composePath, 'utf8')
+    const ensured = ensureStudioAiEnv(compose)
+    if (ensured !== compose) await fs.writeFile(composePath, ensured)
+  } catch {
+    // No compose on disk: the recreate below will find no studio service either, and reports that.
+  }
 
   return recreateServices(dockerDir, ['studio'])
 }

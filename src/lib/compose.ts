@@ -127,3 +127,49 @@ export function ensureFunctionsEnvFile(composeContent: string): string {
   const block = `\n${keyIndent}env_file:\n${keyIndent}  - ${FUNCTIONS_ENV_FILE}`
   return composeContent.replace(serviceMatch[0], `${serviceMatch[0]}${block}`)
 }
+
+/**
+ * Make the `studio` service take its AI provider from the environment.
+ *
+ * The assistant reads `OPENAI_API_KEY` and `OPENAI_BASE_URL` and nothing else, so a project whose
+ * compose omits the second one can only ever talk to OpenAI — the panel would write the variable
+ * into `.env` and Docker would never hand it to the container.
+ *
+ * The default matters as much as the variable: `${OPENAI_BASE_URL:-…}` falls back to OpenAI's own
+ * endpoint. Without a default, a project with no value set would pass an **empty** base URL, which
+ * the SDK accepts as a URL and then fails against — an assistant that is silently broken for
+ * everyone not using a relay.
+ */
+export function ensureStudioAiEnv(composeContent: string): string {
+  const serviceMatch = composeContent.match(/^([ \t]*)studio:[ \t]*$/m)
+  // A project without Studio has nothing to wire; that is a valid stack, not an error.
+  if (!serviceMatch) return composeContent
+
+  const serviceIndent = serviceMatch[1]
+  const blockStart = (serviceMatch.index ?? 0) + serviceMatch[0].length
+
+  // The service ends at the next line that is not indented deeper than `studio:`.
+  const rest = composeContent.slice(blockStart)
+  const endMatch = rest.match(new RegExp(`\\n${serviceIndent}\\S|\\n\\S`))
+  const blockEnd = endMatch?.index !== undefined ? blockStart + endMatch.index : composeContent.length
+  const block = composeContent.slice(blockStart, blockEnd)
+
+  const baseUrlLine = 'OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}'
+  const apiKeyLine = 'OPENAI_API_KEY: ${OPENAI_API_KEY:-}'
+  const additions: string[] = []
+  if (!/^[ \t]*OPENAI_BASE_URL:/m.test(block)) additions.push(baseUrlLine)
+  if (!/^[ \t]*OPENAI_API_KEY:/m.test(block)) additions.push(apiKeyLine)
+  if (additions.length === 0) return composeContent
+
+  const environmentMatch = block.match(/^([ \t]*)environment:[ \t]*$/m)
+  const keyIndent = `${environmentMatch ? environmentMatch[1] : `${serviceIndent}  `}  `
+  const inserted = additions.map((line) => `\n${keyIndent}${line}`).join('')
+
+  if (environmentMatch) {
+    const at = blockStart + (environmentMatch.index ?? 0) + environmentMatch[0].length
+    return `${composeContent.slice(0, at)}${inserted}${composeContent.slice(at)}`
+  }
+
+  const block2 = `\n${serviceIndent}  environment:${inserted}`
+  return `${composeContent.slice(0, blockStart)}${block2}${composeContent.slice(blockStart)}`
+}

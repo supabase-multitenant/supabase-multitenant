@@ -5,7 +5,12 @@ import { promisify } from 'util'
 import { prisma } from './db'
 import { removeProjectTraefikConfig } from './traefik'
 import { getCoreBasePath, getProjectsBasePath } from './paths'
-import { FUNCTIONS_ENV_FILE, ensureFunctionsEnvFile, namespaceContainerNames } from './compose'
+import {
+  FUNCTIONS_ENV_FILE,
+  ensureFunctionsEnvFile,
+  ensureStudioAiEnv,
+  namespaceContainerNames,
+} from './compose'
 import { serializeEnvFile, validateFunctionSecrets } from './function-secrets'
 import { mintProjectKeys } from './supabase-jwt'
 
@@ -197,6 +202,10 @@ export async function createProject(
     // functions service otherwise only reads a fixed env allowlist, so user
     // secrets never reach Deno.env.get(). See ensureFunctionsEnvFile().
     dockerComposeContent = ensureFunctionsEnvFile(dockerComposeContent)
+
+    // The studio service must be able to read its AI provider from the environment, or the
+    // panel's AI settings would be written to .env and never reach the container.
+    dockerComposeContent = ensureStudioAiEnv(dockerComposeContent)
 
     // Update the compose project name to be unique
     dockerComposeContent = dockerComposeContent.replace(
