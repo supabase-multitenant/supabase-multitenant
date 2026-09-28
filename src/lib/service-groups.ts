@@ -123,6 +123,25 @@ export async function stopServices(
   return target
 }
 
+/**
+ * Recreate specific services so they pick up a changed environment.
+ *
+ * `--no-deps` is not optional. Without it compose also reconciles dependencies, so recreating one
+ * container can recreate its neighbours from the on-disk `.env` — which is precisely how the data
+ * plane was knocked over once already. Anything that changes a single container's environment must
+ * be structurally unable to touch the others.
+ */
+export async function recreateServices(
+  projectDir: string,
+  services: string[],
+  timeoutMs = 120000
+): Promise<string[]> {
+  const present = await composeServicesPresent(projectDir, timeoutMs)
+  const target = services.filter((s) => present.has(s))
+  if (target.length > 0) await compose(projectDir, ['up', '-d', '--no-deps', ...target], timeoutMs)
+  return target
+}
+
 /** The compose services that should NOT be running for a given enabled set. */
 export function servicesToStop(enabledGroups: string[]): string[] {
   // Core is forced into the wanted set even if the caller forgot it. Without this,

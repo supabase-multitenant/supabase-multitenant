@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AiAssistantSettings } from '@/components/ai-assistant-settings'
 
 interface ConfigureProjectPageProps {
   params: Promise<{
@@ -973,6 +974,9 @@ export default function ConfigureProjectPage({ params }: ConfigureProjectPagePro
                 </div>
               </CardContent>
             </Card>
+
+            {/* AI Assistant Section */}
+            {projectId && <AiAssistantSettings projectId={projectId} />}
 
             {/* Advanced Settings Section */}
             <Card>
