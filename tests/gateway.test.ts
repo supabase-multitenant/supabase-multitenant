@@ -434,4 +434,28 @@ describe('buildSharedGateway', () => {
   it('rejects an empty tenant list', () => {
     expect(() => buildSharedGateway([], LDS_FRAGMENT)).toThrow(/no tenants/)
   })
+
+  it('honours a tenant port that was already assigned', () => {
+    // Ports default to basePort + index, which shifts every later tenant when one is inserted or
+    // removed. A tenant's Traefik route and its internal URLs name a fixed port, so once a number
+    // has been handed out it must survive reordering — otherwise the tenant goes dark.
+    const reordered = [TENANTS[1], TENANTS[0]]
+    const { ports } = buildSharedGateway(
+      [
+        { ...reordered[0], port: 8102 },
+        { ...reordered[1], port: 8100 },
+      ],
+      LDS_FRAGMENT,
+      { basePort: 8100 }
+    )
+
+    expect(ports[TENANTS[1].slug]).toBe(8102)
+    expect(ports[TENANTS[0].slug]).toBe(8100)
+  })
+
+  it('still assigns by position when no port was stored', () => {
+    const { ports } = buildSharedGateway(TENANTS, LDS_FRAGMENT, { basePort: 8100 })
+    expect(ports[TENANTS[0].slug]).toBe(8100)
+    expect(ports[TENANTS[1].slug]).toBe(8101)
+  })
 })

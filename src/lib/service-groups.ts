@@ -23,6 +23,8 @@
  */
 
 import path from 'node:path'
+
+import { composeEnv } from './compose-env'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 
@@ -235,6 +237,7 @@ async function compose(
   try {
     const { stdout, stderr } = await execAsync(`docker compose ${args.join(' ')}`, {
       cwd: projectDir,
+      env: await composeEnv(projectDir),
       timeout: timeoutMs,
       maxBuffer: 8 * 1024 * 1024,
     })

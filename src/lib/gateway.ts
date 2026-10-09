@@ -83,6 +83,16 @@ export interface TenantGatewayInput {
    */
   internalAuthorities?: string[]
   /**
+   * The listener port this tenant already owns, if it has one.
+   *
+   * Ports otherwise default to `basePort + index`, which is fine for a fixed list but wrong for a
+   * platform that creates and deletes tenants: inserting one would shift every later tenant to a
+   * different port, while that tenant's Traefik route and internal URLs both name a fixed number
+   * — the tenant would go dark. A stored port therefore always wins; only a tenant that has never
+   * been assigned one falls back to its position in the list.
+   */
+  port?: number
+  /**
    * This tenant's own keys. Required: the listener template embeds `$ANON_KEY` and friends in its
    * JWT/RBAC filters, and in a shared gateway those placeholders must be resolved **per tenant**.
    * Leaving them unresolved would either bake one tenant's key into every virtual host or ship
@@ -512,7 +522,7 @@ export function buildSharedListener(
   const listeners: string[] = []
 
   tenants.forEach((tenant, index) => {
-    const port = basePort + index
+    const port = tenant.port ?? basePort + index
     ports[tenant.slug] = port
 
     // Keys first: the fragment's filters reference them, and an unresolved tenant placeholder in a

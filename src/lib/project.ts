@@ -5,6 +5,7 @@ import { promisify } from 'util'
 import { prisma } from './db'
 import { removeProjectTraefikConfig } from './traefik'
 import { getCoreBasePath, getProjectsBasePath } from './paths'
+import { composeEnv } from './compose-env'
 import {
   FUNCTIONS_ENV_FILE,
   ensureFunctionsEnvFile,
@@ -251,7 +252,10 @@ export async function createProject(
 
       // Database
       POSTGRES_HOST: 'db',
-      POSTGRES_DB: 'postgres',
+      // Every per-service DSN in the compose interpolates ${POSTGRES_DB}, and a tenant's database is
+      // named supabase_multitenant. Leaving this as 'postgres' pointed auth, rest, storage, realtime
+      // and functions at a different database than the one the project was provisioned into.
+      POSTGRES_DB: 'supabase_multitenant',
 
       // Other defaults
       POOLER_DEFAULT_POOL_SIZE: '20',
@@ -447,6 +451,7 @@ export async function deployProject(projectId: string) {
         try {
           await execAsync('docker compose pull', {
             cwd: projectDir,
+            env: await composeEnv(projectDir),
             timeout: 300000, // 5 minute timeout
             maxBuffer: 1024 * 1024 * 10 // 10MB buffer
           })
@@ -462,6 +467,7 @@ export async function deployProject(projectId: string) {
       console.log('Starting Supabase services...')
       await execAsync('docker compose up -d --remove-orphans', {
         cwd: projectDir,
+        env: await composeEnv(projectDir),
         timeout: 300000, // 5 minute timeout
         maxBuffer: 1024 * 1024 * 10 // 10MB buffer
       })
@@ -489,6 +495,7 @@ export async function deployProject(projectId: string) {
     try {
       const { stdout } = await execAsync('docker compose ps --format json', {
         cwd: projectDir,
+        env: await composeEnv(projectDir),
         maxBuffer: 1024 * 1024 * 2 // 2MB buffer for container status
       })
       const containers = JSON.parse(`[${stdout.trim().split('\n').join(',')}]`)
@@ -524,7 +531,7 @@ export async function pauseProject(projectId: string) {
     const projectDir = path.join(getProjectsBasePath(), project.slug, 'docker')
 
     // Stop Docker containers
-    await execAsync('docker compose stop', { cwd: projectDir })
+    await execAsync('docker compose stop', { cwd: projectDir, env: await composeEnv(projectDir) })
 
     // Update project status
     await prisma.project.update({
@@ -556,11 +563,12 @@ export async function resumeProject(projectId: string) {
     // containers rather than a recreate — seconds instead of a redeploy. If a container was
     // removed while paused, fall back to `up -d`.
     try {
-      await execAsync('docker compose start', { cwd: projectDir })
+      await execAsync('docker compose start', { cwd: projectDir, env: await composeEnv(projectDir) })
     } catch (startError) {
       console.warn('compose start failed, falling back to up -d:', startError)
       await execAsync('docker compose up -d --remove-orphans', {
         cwd: projectDir,
+        env: await composeEnv(projectDir),
         timeout: 300000,
         maxBuffer: 1024 * 1024 * 5,
       })
@@ -596,6 +604,7 @@ export async function deleteProject(projectId: string) {
       console.log(`Stopping Docker containers for project ${project.slug}...`)
       await execAsync('docker compose down --volumes --remove-orphans', {
         cwd: dockerDir,
+        env: await composeEnv(dockerDir),
         timeout: 120000, // 2 minutes timeout
         maxBuffer: 1024 * 1024 * 5 // 5MB buffer
       })
