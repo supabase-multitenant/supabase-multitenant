@@ -13,7 +13,6 @@ type Project = {
   slug: string
   description: string | null
   status: string
-  region: string | null
   domain: string | null
   domainVerified: boolean | null
   studioDomain: string | null
@@ -247,7 +246,7 @@ export function ProjectClient({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {/* Self-hosted on your own node — not a cloud region. */}
-            Self-hosted{project.region ? ` · ${project.region}` : ''} · created{' '}
+            Self-hosted · created{' '}
             {new Date(project.createdAt).toLocaleDateString()}
           </p>
           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{project.slug}</p>

@@ -12,14 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Field, Select } from '@/components/form-controls'
-
-const regions = [
-  'eu-central-1 · Frankfurt',
-  'eu-west-1 · Ireland',
-  'us-east-1 · Virginia',
-  'ap-south-1 · Mumbai',
-]
+import { Field } from '@/components/form-controls'
 
 const sidebar = [
   { label: 'Projects', icon: Boxes, active: true },
@@ -30,7 +23,7 @@ const sidebar = [
   { label: 'Organization settings', icon: Settings },
 ]
 
-export type ProjectRow = { id: string; name: string; region: string; status: string }
+export type ProjectRow = { id: string; name: string; status: string }
 
 function statusLabel(status: string) {
   if (status === 'paused') return 'Project is paused'
@@ -53,7 +46,6 @@ export function OrgProjects({
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
-  const [region, setRegion] = useState(regions[0])
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -75,7 +67,6 @@ export function OrgProjects({
           name: name.trim(),
           description: '',
           organizationId: org.id,
-          region: region.split(' · ')[0],
           databasePassword: password || undefined,
         }),
       })
@@ -88,7 +79,6 @@ export function OrgProjects({
         {
           id: data.project.id,
           name: data.project.name,
-          region: data.project.region ?? region.split(' · ')[0],
           status: data.project.status ?? 'provisioning',
         },
         ...prev,
@@ -168,7 +158,7 @@ export function OrgProjects({
                   <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {/* These run on our own host, not in a cloud region. */}
-                    Self-hosted{p.region ? ` · ${p.region}` : ''}
+                    Self-hosted
                   </p>
                   <p className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
                     <span
@@ -273,9 +263,6 @@ export function OrgProjects({
                   style={{ width: `${Math.min(password.length * 8, 100)}%` }}
                 />
               </div>
-            </Field>
-            <Field label="Region" hint="Pick the region closest to your users.">
-              <Select value={region} onChange={setRegion} options={regions} />
             </Field>
             <Field label="Security">
               <div className="space-y-3">

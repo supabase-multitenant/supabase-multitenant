@@ -97,8 +97,7 @@ export default function Home() {
                 <code>{`create table projects (
   id uuid primary key default gen_random_uuid(),
   org_id uuid references orgs (id),
-  name text not null,
-  region text default 'eu-central-1'
+  name text not null
 );
 
 alter table projects enable row level security;

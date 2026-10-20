@@ -36,7 +36,6 @@ export default async function OrgPage({ params }: { params: Promise<{ orgId: str
         initial={org.projects.map((p) => ({
           id: p.id,
           name: p.name,
-          region: p.region ?? 'eu-central-1',
           status: p.status,
         }))}
       />
